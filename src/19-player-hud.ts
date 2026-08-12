@@ -114,6 +114,13 @@ const UI: Record<string, any> = {
   streakPop: $('streakPop'),
   streakLine: $('streakLine'),
   streakDock: $('streakDock'),
+  gunshipHud: $('gunshipHud'),
+  gunshipTime: $('gunshipTime'),
+  gunshipWeapons: [...document.querySelectorAll('.ghWeapon')],
+  gunshipTargets: $('gunshipTargets'),
+  gunshipTargetEls: [],
+  jugFrame: $('jugFrame'),
+  jugStatus: $('jugStatus'),
   lowhp: $('lowhp'),
   edgeGlow: $('edgeGlow'),
   minimap: $('minimap'),
@@ -125,6 +132,7 @@ const UI: Record<string, any> = {
   breathTag: $('breathTag'),
   comms: $('comms'),
   _scopeK: -1,
+  _crossHidden: false,
   _breathTip: null,
   startScreen: $('startScreen'),
   endScreen: $('endScreen'),
@@ -134,18 +142,70 @@ const UI: Record<string, any> = {
   boot: $('boot'),
 };
 
+function setJuggernautUI(on) {
+  UI.hud.classList.toggle('jug', on);
+  if (!on) {
+    UI.jugFrame.classList.remove('damage1', 'damage2', 'damage3');
+    UI.jugStatus.textContent = '装甲完整';
+  }
+}
+
+function setGunshipUI(on) {
+  UI.hud.classList.toggle('gunship', on);
+  if (!on) {
+    for (const el of UI.gunshipTargetEls) el.style.display = 'none';
+    return;
+  }
+  while (UI.gunshipTargetEls.length < Math.max(10, enemies.length)) {
+    const marker = document.createElement('div');
+    marker.className = 'ghTarget';
+    marker.innerHTML = '<span>敌军</span>';
+    UI.gunshipTargets.appendChild(marker);
+    UI.gunshipTargetEls.push(marker);
+  }
+  UI.scope.style.opacity = 0;
+  compMat.uniforms.scope.value = 0;
+}
+
+function updateGunshipUI(s) {
+  UI.gunshipTime.textContent = `${Math.max(0, s.t).toFixed(1)} 秒`;
+  UI.gunshipWeapons.forEach((el, i) => {
+    el.classList.toggle('on', i === s.weapon);
+    const cd = Math.max(0, s.cooldowns[i]);
+    el.querySelector('b').textContent = cd > 0.04 ? cd.toFixed(1) : '就绪';
+  });
+}
+
 function updateVitalsUI() {
   UI.hpNum.textContent = Math.max(0, Math.round(player.hp));
   UI.apNum.textContent = Math.max(0, Math.round(player.armor));
   UI.hpFill.style.transform = `scaleX(${clamp(player.hp / 100, 0, 1)})`;
   UI.apFill.style.transform = `scaleX(${clamp(player.armor / (player.armorMax || 50), 0, 1)})`;
   UI.hpFill.classList.toggle('low', player.hp <= 30);
+  if (G.jug) {
+    const integrity = clamp(
+      (player.armor + Math.max(0, player.hp)) / (player.armorMax + 100),
+      0,
+      1
+    );
+    UI.jugFrame.classList.toggle('damage1', integrity < 0.82);
+    UI.jugFrame.classList.toggle('damage2', integrity < 0.55);
+    UI.jugFrame.classList.toggle('damage3', integrity < 0.28);
+    UI.jugStatus.textContent =
+      integrity < 0.28
+        ? '装甲危急'
+        : integrity < 0.55
+          ? '装甲严重破损'
+          : integrity < 0.82
+            ? '装甲受损'
+            : '装甲完整';
+  }
 }
 function updateAmmoUI() {
   const w = WEAPONS[player.weapon];
-  UI.magNum.textContent = w.mag;
-  UI.resNum.textContent = '/ ' + w.res;
-  UI.magNum.classList.toggle('empty', w.mag === 0);
+  UI.magNum.textContent = w.infiniteAmmo ? '∞' : w.mag;
+  UI.resNum.textContent = w.infiniteAmmo ? '无限弹药' : '/ ' + w.res;
+  UI.magNum.classList.toggle('empty', !w.infiniteAmmo && w.mag === 0);
   UI.wname.textContent = w.name;
   UI.wmode.textContent =
     w.id === 'shotgun'
@@ -153,16 +213,23 @@ function updateAmmoUI() {
       : w.id === 'sniper'
         ? '栓动式'
         : w.auto && !w.semi
-          ? '全自动'
+          ? w.infiniteAmmo
+            ? '全自动 // 持续供弹'
+            : '全自动'
           : '半自动';
   if (UI._icon !== player.weapon) {
     UI._icon = player.weapon;
     UI.wicon.innerHTML = WICONS[player.weapon];
   }
-  const need = w.mag === 0 || (w.mag <= w.magSize * 0.25 && w.res > 0);
-  UI.reloadHint.textContent =
-    w.mag === 0 && w.res === 0 ? '弹药耗尽' : need && player.reloadT <= 0 ? '按 R 装填' : '';
-  UI.reloadHint.classList.toggle('blink', w.mag === 0 && w.res > 0);
+  const need = !w.infiniteAmmo && (w.mag === 0 || (w.mag <= w.magSize * 0.25 && w.res > 0));
+  UI.reloadHint.textContent = w.infiniteAmmo
+    ? ''
+    : w.mag === 0 && w.res === 0
+      ? '弹药耗尽'
+      : need && player.reloadT <= 0
+        ? '按 R 装填'
+        : '';
+  UI.reloadHint.classList.toggle('blink', !w.infiniteAmmo && w.mag === 0 && w.res > 0);
   UI.slots.forEach((s, i) => {
     s.classList.toggle('act', i === player.weapon);
   });
@@ -392,9 +459,13 @@ function updateCrosshair(dt) {
     UI._scopeK = scopeK;
     UI.scope.style.opacity = scopeK;
     compMat.uniforms.scope.value = scopeK;
-    UI.cross.classList.toggle('hidden', scopeK > 0.02);
     /* the gun would otherwise render straight through the lens */
     vmRoot.visible = scopeK < 0.92;
+  }
+  const crossHidden = player.adsEase > 0.12 || !!G.gunship?.controlled;
+  if (crossHidden !== UI._crossHidden) {
+    UI._crossHidden = crossHidden;
+    UI.cross.classList.toggle('hidden', crossHidden);
   }
   const showBreath = scopeK > 0.5 && !player.breathLock && player.breath <= 0 && !player.breathHeld;
   if (showBreath !== UI._breathTip) {

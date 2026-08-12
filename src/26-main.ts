@@ -46,7 +46,14 @@ function frame(now) {
     G.time -= dt;
     if (G.grace > 0) G.grace -= dt;
     if (G.protect > 0) G.protect -= dt;
-    updatePlayer(dt);
+    const controllingGunship = !!G.gunship?.controlled;
+    if (!controllingGunship) {
+      updatePlayer(dt);
+      updateViewmodel(dt, mdx, mdy);
+      updatePlayerFiring(dt);
+    } else {
+      mouseDX = mouseDY = 0;
+    }
     updateCombatDirector();
     for (const e of enemies) updateEnemy(e, dt);
     for (const a of allies) updateAlly(a, dt);
@@ -65,7 +72,7 @@ function frame(now) {
       }
     }
     if (G.heli) updateHeli(dt);
-    if (G.gunship) updateGunship(dt);
+    if (G.gunship) updateGunship(dt, mdx, mdy);
     /* deathmatch bookkeeping: the squad refills its dead, and a dead player
        is back on their feet in 2.6s — only the clock ends the round */
     for (let i = respawnQueue.length - 1; i >= 0; i--) {
@@ -106,7 +113,7 @@ function frame(now) {
   dustField.camPos.value.copy(camera.position);
   skyUniforms.uTime.value = now * 0.001;
   updateSunShafts();
-  updateViewmodel(dt, mdx, mdy);
+  if ((!G.running || G.over) && !G.gunship?.controlled) updateViewmodel(dt, mdx, mdy);
   updateShells(dt);
   updateTracers(dt);
   updateEnemyFlashes(dt);
@@ -170,7 +177,7 @@ function frame(now) {
   renderer.setRenderTarget(sceneRT);
   renderer.clear(true, true, true);
   renderer.render(scene, camera);
-  if (G.started) {
+  if (G.started && !G.gunship?.controlled) {
     /* viewmodel stays hidden on the menus */
     renderer.clearDepth();
     renderer.render(vmScene, vmCamera);

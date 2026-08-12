@@ -232,7 +232,7 @@ const compMat = postMat(
   `
   uniform sampler2D tScene, tBloom;
   uniform vec2  res;
-  uniform float time, bloom, vig, dmg, low, ab, flash, scope, expo;
+  uniform float time, bloom, vig, dmg, low, ab, flash, scope, gunship, expo;
   varying vec2 vUv;
   vec3 aces(vec3 x){
     const float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14;
@@ -287,6 +287,16 @@ const compMat = postMat(
       col = mix(col, g, scope);
     }
 
+    /* AC-130-style optical fire control: hard monochrome contrast with a
+       slight phosphor cast. The DOM HUD supplies crisp scan lines and labels. */
+    if (gunship > 0.001){
+      float gl = dot(col, vec3(0.2126,0.7152,0.0722));
+      gl = smoothstep(0.045, 0.92, gl);
+      gl = pow(gl, 0.78);
+      vec3 optic = vec3(gl) * vec3(0.94, 1.0, 0.92);
+      col = mix(col, optic, gunship);
+    }
+
     col = mix(col, vec3(0.52,0.02,0.02), dmg*0.42);
     float edge = smoothstep(0.05, 0.30, r2);
     col = mix(col, mix(col, vec3(0.42,0.0,0.0), 0.8), low*edge);
@@ -309,6 +319,7 @@ const compMat = postMat(
     ab: { value: 0.5 },
     flash: { value: 0 },
     scope: { value: 0 },
+    gunship: { value: 0 },
     expo: { value: 1.0 },
   }
 );

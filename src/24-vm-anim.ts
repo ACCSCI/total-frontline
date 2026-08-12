@@ -11,10 +11,11 @@ function updateViewmodel(dt, mdx, mdy) {
   const vm = w.vm;
 
   /* sway from mouse movement */
-  swayX = damp(swayX, clamp(-mdx * 0.0016, -0.055, 0.055), 12, dt);
-  swayY = damp(swayY, clamp(mdy * 0.0016, -0.045, 0.045), 12, dt);
-  swayLagX = damp(swayLagX, swayX, 9, dt);
-  swayLagY = damp(swayLagY, swayY, 9, dt);
+  const heavy = w.heavy ? 1 : 0;
+  swayX = damp(swayX, clamp(-mdx * 0.0016, -0.055, 0.055), heavy ? 6 : 12, dt);
+  swayY = damp(swayY, clamp(mdy * 0.0016, -0.045, 0.045), heavy ? 6 : 12, dt);
+  swayLagX = damp(swayLagX, swayX, heavy ? 4.5 : 9, dt);
+  swayLagY = damp(swayLagY, swayY, heavy ? 4.5 : 9, dt);
 
   /* recoil spring */
   const K = 210,
@@ -45,9 +46,9 @@ function updateViewmodel(dt, mdx, mdy) {
 
   /* bob synced to footsteps */
   const amp = player.bobAmp;
-  px += Math.sin(player.bob) * 0.022 * amp;
-  py += (Math.abs(Math.cos(player.bob)) - 0.5) * 0.02 * amp;
-  rz += Math.sin(player.bob) * 0.03 * amp;
+  px += Math.sin(player.bob) * (heavy ? 0.015 : 0.022) * amp;
+  py += (Math.abs(Math.cos(player.bob)) - 0.5) * (heavy ? 0.028 : 0.02) * amp;
+  rz += Math.sin(player.bob) * (heavy ? 0.044 : 0.03) * amp;
   rx += Math.cos(player.bob * 2) * 0.014 * amp;
 
   /* airborne float */
@@ -193,6 +194,11 @@ function updateViewmodel(dt, mdx, mdy) {
   );
   vmRecoil.position.set(0, vmRec.py * 0.5, vmRec.pz);
   vmRecoil.rotation.set(vmRec.rx * 0.6, vmRec.ry * 0.6, vmRec.rz * 0.6);
+  if (vm.barrels) {
+    const spinWant = player.triggerHeld && G.running && !player.dead ? 32 : 0;
+    vm.barrelSpin = damp(vm.barrelSpin || 0, spinWant, spinWant ? 8 : 3.2, dt);
+    vm.barrels.rotation.z += vm.barrelSpin * dt;
+  }
 
   /* muzzle flash */
   if (flashT > 0) {

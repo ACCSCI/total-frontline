@@ -62,6 +62,9 @@ will not play on a phone.
 | Mouse wheel | Cycle weapons |
 | `Esc` | Pause |
 
+While controlling the gunship, move the mouse to steer the fire-control reticle, hold
+left click to fire, and press `1`, `2`, or `3` for the 25 mm, 40 mm, or 105 mm cannon.
+
 ## The round
 
 Ten-minute deathmatch. You start with 100 health and 50 armor; armor absorbs half of
@@ -85,9 +88,11 @@ redeploy eight seconds after going down. Killstreaks are earned at 3, 5, 7, 8, 1
 whenever the moment is right. The ladder: a UAV that paints every hostile on the
 minimap for 25s, an airstrike walked onto the thickest enemy cluster, an EMP that
 paralyses enemy fire for 12s, an attack helicopter strafing from its orbit for 40s,
-a gunship circling with explosive fire for 25s, and the juggernaut suit — 300 armour
-and small-arms resistance until you go down. Dying resets the count but keeps whatever
-you had already earned.
+a player-controlled thermal gunship with 25 mm, 40 mm, and 105 mm fire for 25s,
+red hostile tracking boxes and an occlusion cross over enemies inside cover, and the
+juggernaut suit — 300 armour, heavy movement, damage-reactive visor cracks and a
+dedicated six-barrel JUG-M134 Gatling gun until you go down. Dying resets the count
+but keeps whatever you had already earned.
 
 ## Weapons
 
@@ -98,6 +103,11 @@ you had already earned.
 | 3 | P-9 Sidearm | 15 | 90 | 430 rpm semi automatic, fastest draw |
 | 4 | SR-7 Longbow | 5 | 25 | Bolt action, a body hit kills |
 | 5 | SAW-250 LMG | 100 | 200 | 800 rpm full auto, slow to aim, long reload |
+
+The Juggernaut reward locks the normal weapon slots and equips a hidden sixth weapon,
+the continuously-fed JUG-M134. It has unlimited ammunition and never reloads while the
+suit is active. Its barrel cluster spins up under fire and winds down with visible
+inertia; it is unavailable outside the suit.
 
 Each carries a viewmodel built from primitives with gloved hands, sways against mouse
 movement, bobs in time with footsteps, dips off screen to reload and ejects brass that

@@ -39,6 +39,12 @@ addEventListener('keydown', (e) => {
   )
     e.preventDefault();
   if (!G.running) return;
+  if (G.gunship?.controlled) {
+    if (e.code === 'Digit1') selectGunshipWeapon(0);
+    if (e.code === 'Digit2') selectGunshipWeapon(1);
+    if (e.code === 'Digit3') selectGunshipWeapon(2);
+    return;
+  }
   if (e.code === 'KeyR') startReload();
   if (e.code === 'Digit1') switchWeapon(0);
   if (e.code === 'Digit2') switchWeapon(1);
@@ -70,6 +76,10 @@ addEventListener('mousemove', (e) => {
 });
 addEventListener('mousedown', (e) => {
   if (!G.running) return;
+  if (G.gunship?.controlled) {
+    if (e.button === 0) G.gunship.trigger = true;
+    return;
+  }
   /* Latch the press. A click and release inside one frame — which is most
      quick taps at 140fps — used to set triggerHeld and clear it again before
      the update loop ever looked, and the shot simply never happened. The
@@ -85,6 +95,7 @@ addEventListener('mousedown', (e) => {
   }
 });
 addEventListener('mouseup', (e) => {
+  if (G.gunship?.controlled && e.button === 0) G.gunship.trigger = false;
   if (e.button === 0) {
     player.triggerHeld = false;
     player.triggerReleased = true;
@@ -94,8 +105,12 @@ addEventListener(
   'wheel',
   (e) => {
     if (!G.running) return;
-    const n = WEAPONS.length;
     const dir = e.deltaY > 0 ? 1 : -1;
+    if (G.gunship?.controlled) {
+      selectGunshipWeapon((G.gunship.weapon + dir + 3) % 3);
+      return;
+    }
+    const n = NORMAL_WEAPON_COUNT;
     switchWeapon((player.weapon + dir + n) % n);
   },
   { passive: true }
@@ -178,7 +193,32 @@ const _fwd = new THREE.Vector3(),
   _rgt = new THREE.Vector3(),
   _up = new THREE.Vector3(0, 1, 0);
 const _muzzleWorld = new THREE.Vector3(),
+  _muzzleView = new THREE.Vector3(),
+  _muzzleRayPoint = new THREE.Vector3(),
+  _muzzleRayDir = new THREE.Vector3(),
   _hitN = new THREE.Vector3();
+const MUZZLE_FORWARD_DEPTH = 0.55;
+
+/** The weapon is rendered by a second camera, so its scene coordinates cannot
+ * be copied into the world. Preserve the muzzle's exact screen position and
+ * place it a short, safe distance in front of the gameplay camera instead. */
+function placeWorldMuzzleFromViewmodel(muzzle) {
+  muzzle.updateWorldMatrix(true, false);
+  vmCamera.updateMatrixWorld(true);
+  camera.updateMatrixWorld(true);
+
+  muzzle.getWorldPosition(_muzzleView).project(vmCamera);
+  _muzzleRayPoint.set(_muzzleView.x, _muzzleView.y, 0).unproject(camera);
+  _muzzleRayDir.subVectors(_muzzleRayPoint, camera.position).normalize();
+
+  const forwardDot = _muzzleRayDir.dot(_fwd);
+  if (!Number.isFinite(forwardDot) || forwardDot <= 0.05) {
+    return _muzzleWorld.copy(camera.position).addScaledVector(_fwd, MUZZLE_FORWARD_DEPTH);
+  }
+  return _muzzleWorld
+    .copy(camera.position)
+    .addScaledVector(_muzzleRayDir, MUZZLE_FORWARD_DEPTH / forwardDot);
+}
 
 function currentSpreadMult() {
   const w = WEAPONS[player.weapon];
@@ -205,7 +245,9 @@ function toggleADS() {
   setADS(!player.ads);
 }
 
-function switchWeapon(i) {
+function switchWeapon(i, force?) {
+  if (!force && (i < 0 || i >= NORMAL_WEAPON_COUNT || G.jug)) return;
+  if (force && (i < 0 || i >= WEAPONS.length)) return;
   if (i === player.weapon && player.switchTo < 0) return;
   if (player.switching > 0) return;
   if (player.reloadT > 0) {
@@ -220,6 +262,7 @@ function switchWeapon(i) {
 }
 function startReload() {
   const w = WEAPONS[player.weapon];
+  if (w.infiniteAmmo) return;
   if (player.reloadT > 0 || player.switching > 0 || player.pumpT > 0 || player.boltT > 0) return;
   if (w.mag >= w.magSize || w.res <= 0) return;
   setADS(false);
@@ -249,7 +292,7 @@ function fireWeapon() {
     player.boltT > 0
   )
     return false;
-  if (w.mag <= 0) {
+  if (!w.infiniteAmmo && w.mag <= 0) {
     if (player.triggerReleased) {
       SFX.dryFire();
       player.triggerReleased = false;
@@ -257,7 +300,7 @@ function fireWeapon() {
     if (w.res > 0) startReload();
     return true;
   }
-  w.mag--;
+  if (!w.infiniteAmmo) w.mag--;
   player.fireCooldown = 60 / w.rpm;
   G.shots++;
   player.triggerReleased = false;
@@ -268,13 +311,7 @@ function fireWeapon() {
   camera.getWorldDirection(_fwd);
   _rgt.crossVectors(_fwd, _up).normalize();
   const upv = new THREE.Vector3().crossVectors(_rgt, _fwd).normalize();
-  w.vm.muzzle.updateWorldMatrix(true, false);
-  /* approximate world muzzle from the camera basis (viewmodel lives in its own scene) */
-  _muzzleWorld
-    .copy(camera.position)
-    .addScaledVector(_fwd, 0.55)
-    .addScaledVector(_rgt, 0.16)
-    .addScaledVector(upv, -0.12);
+  placeWorldMuzzleFromViewmodel(w.vm.muzzle);
 
   const spread = currentSpreadMult();
   let anyHit = false,
@@ -451,7 +488,7 @@ function alertToGunfire(radius) {
   );
 }
 
-function damageEnemy(e, dmg, head, dir, point, killer?) {
+function damageEnemy(e, dmg, head, dir, point, killer?, creditPlayer?) {
   e.hp -= dmg;
   e.flinch = Math.min(1, e.flinch + (head ? 0.9 : 0.55));
   e.alerted = true;
@@ -461,14 +498,14 @@ function damageEnemy(e, dmg, head, dir, point, killer?) {
     e.reactT = rand(0.14, 0.3);
   }
   if (e.hp <= 0) {
-    killEnemy(e, head, dir, killer);
+    killEnemy(e, head, dir, killer, creditPlayer);
     return true;
   }
   e.tag.draw(e.hp, true);
   return false;
 }
 
-function killEnemy(e, head, dir, killer) {
+function killEnemy(e, head, dir, killer, creditPlayer?) {
   e.dead = true;
   e.hp = 0;
   e.state = ST.DEAD;
@@ -477,10 +514,10 @@ function killEnemy(e, head, dir, killer) {
   e.tag.sprite.visible = false;
   rebuildHitMeshes();
   killFeed(e.name, head, killer);
-  if (!killer) {
-    /* a player kill scores and feeds the streaks; squadmate kills don't */
+  if (!killer || creditPlayer) {
+    /* controlled streak kills score the match but do not feed themselves */
     G.kills++;
-    noteKillstreak();
+    if (!killer) noteKillstreak();
     if (head) G.headshots++;
     SFX.killChime();
     G.killFlash = 1;
@@ -510,7 +547,9 @@ const vmRec = { pz: 0, py: 0, rx: 0, ry: 0, rz: 0, vz: 0, vy: 0, vrx: 0, vry: 0,
 function vmKick(w) {
   vmRec.vz += w.recoilKick * 46;
   vmRec.vy += w.recoilKick * 13;
-  vmRec.vrx -= w.recoilRot * 46;
+  /* The viewmodel points down -Z, so positive local X raises the muzzle.
+     A negative impulse pitches it toward the floor and fights camera recoil. */
+  vmRec.vrx += w.recoilRot * 46;
   vmRec.vry += (Math.random() - 0.5) * w.recoilRot * 24;
   vmRec.vrz += (Math.random() - 0.5) * w.recoilRot * 30;
 }
@@ -521,8 +560,13 @@ function vmKick(w) {
 function damagePlayer(amount, fromPos, killer) {
   if (player.dead || G.over || G.protect > 0) return;
   player.lastHurt = perfNow;
-  let dmg = G.jug ? amount * 0.45 : amount; // juggernaut plating shrugs small arms
-  if (player.armor > 0) {
+  let dmg = amount;
+  if (G.jug) {
+    const absorbed = Math.min(player.armor, dmg);
+    player.armor -= absorbed;
+    dmg -= absorbed;
+  }
+  if (!G.jug && player.armor > 0) {
     const absorbed = dmg * 0.5;
     player.armor -= absorbed;
     dmg -= absorbed;
@@ -540,6 +584,8 @@ function damagePlayer(amount, fromPos, killer) {
   if (player.hp <= 0) {
     player.hp = 0;
     player.dead = true;
+    if (G.gunship?.controlled) endGunship('death');
+    if (G.jug) exitJuggernaut(false);
     setADS(false);
     updateVitalsUI();
     /* deathmatch: death costs you 2.6 seconds, not the round */

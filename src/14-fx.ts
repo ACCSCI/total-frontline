@@ -135,37 +135,73 @@ for (let i = 0; i < 26; i++) {
   m.visible = false;
   m.frustumCulled = false;
   scene.add(m);
-  TRACERS.push({ mesh: m, t: 0, dur: 0.06 });
+  TRACERS.push({
+    mesh: m,
+    from: new THREE.Vector3(),
+    dir: new THREE.Vector3(),
+    length: 0,
+    lead: 0,
+    segment: 0,
+    speed: 0,
+    fresh: false,
+    w: 1,
+  });
 }
 let tracerHead = 0;
 const _tv1 = new THREE.Vector3(),
-  _tv2 = new THREE.Vector3();
+  _tv2 = new THREE.Vector3(),
+  _tracerA = new THREE.Vector3(),
+  _tracerB = new THREE.Vector3();
+
+function placeTracerSegment(tr, tail, head) {
+  _tracerA.copy(tr.from).addScaledVector(tr.dir, tail);
+  _tracerB.copy(tr.from).addScaledVector(tr.dir, head);
+  const visibleLength = Math.max(0.001, head - tail);
+  tr.mesh.position.copy(_tv2.addVectors(_tracerA, _tracerB).multiplyScalar(0.5));
+  tr.mesh.lookAt(_tracerB);
+  tr.mesh.scale.set(tr.w, tr.w, visibleLength);
+  return visibleLength;
+}
+
 function spawnTracer(from, to, color, width) {
   const tr = TRACERS[tracerHead];
   tracerHead = (tracerHead + 1) % TRACERS.length;
   const len = _tv1.subVectors(to, from).length();
   if (len < 0.2) return;
-  tr.mesh.position.copy(_tv2.addVectors(from, to).multiplyScalar(0.5));
-  tr.mesh.lookAt(to);
-  tr.mesh.scale.set(width || 1, width || 1, len);
+  tr.w = width || 1;
+  tr.from.copy(from);
+  tr.dir.subVectors(to, from).divideScalar(len);
+  tr.length = len;
+  tr.segment = tr.w > 1.5 ? 5.2 : 3.4;
+  tr.speed = tr.w > 1.5 ? 430 : 285;
+  tr.lead = Math.min(len, tr.segment);
+  tr.fresh = true;
+  placeTracerSegment(tr, 0, tr.lead);
   tr.mesh.material.color.setHex(color || 0xffcf7a);
   tr.mesh.material.opacity = 0.95;
   tr.mesh.visible = true;
-  tr.w = width || 1;
-  tr.t = 0;
-  tr.dur = (0.055 + len * 0.0015) * (tr.w > 1.5 ? 2.6 : 1);
 }
 function updateTracers(dt) {
   for (const tr of TRACERS) {
     if (!tr.mesh.visible) continue;
-    tr.t += dt;
-    const k = 1 - tr.t / tr.dur;
-    if (k <= 0) {
+    /* Keep the first rendered frame attached to the muzzle. From the next
+       frame onward it is a free-moving bullet streak, never tethered to the
+       weapon after the round has left the barrel. */
+    if (tr.fresh) {
+      tr.fresh = false;
+      continue;
+    }
+    tr.lead += tr.speed * dt;
+    const tail = Math.max(0, tr.lead - tr.segment);
+    if (tail >= tr.length) {
       tr.mesh.visible = false;
       continue;
     }
+    const head = Math.min(tr.length, tr.lead);
+    const visibleLength = placeTracerSegment(tr, tail, head);
+    const k = clamp(visibleLength / Math.min(tr.segment, tr.length), 0, 1);
     tr.mesh.material.opacity = k * 0.95;
-    tr.mesh.scale.x = tr.mesh.scale.y = (0.4 + k * 0.8) * (tr.w || 1);
+    tr.mesh.scale.x = tr.mesh.scale.y = (0.45 + k * 0.55) * tr.w;
   }
 }
 
