@@ -215,3 +215,45 @@ Sent with two screenshots: one looking up at the zenith, one down a container la
 ```text
 time to fix some bugs, enemeies guns are pointing backwards if you see while shooting and our sky looks pixelated like you can see here and one more thing zooming in in m4 carbine is like trash i mean theres' no use if i can't zoom in more and see enemy
 ```
+
+---
+
+## 6. A main menu and a second map
+
+```text
+能不能给这个加上主菜单，然后再加一个核弹小镇的地图？
+```
+
+## 7. Dev tooling and the 600-line gate
+
+```text
+用git 、biome、bun,lefthook,lintstage,单文件不能超过600行门禁
+```
+
+---
+
+## 8. Deathmatch rules, and the Nuketown spawns
+
+Two messages. The first followed a question about the Nuketown spawn point.
+
+```text
+加入呼吸回血和10分钟死斗，不要死一次就回主菜单
+```
+
+```text
+和原版nuketown对不上，应该是双方在各自房屋后面出生
+```
+
+---
+
+## 9. Squadmates, a Chinese UI, an LMG, and killstreaks
+
+```text
+为什么只有敌人没有队友，为什么UI是英文不是中文？能不能增加一个机枪？连杀奖励呢？
+```
+
+## 10. Second floors on Nuketown
+
+```text
+而且你这个nuketown的楼房没有2楼，上不去
+```

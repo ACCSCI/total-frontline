@@ -1,0 +1,8 @@
+pre-commit:
+  parallel: false
+  jobs:
+    - name: lint-staged
+      run: bunx lint-staged
+    - name: file-line-gate
+      always_run: true
+      run: bun scripts/check-file-lines.mjs

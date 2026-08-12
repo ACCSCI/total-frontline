@@ -1,25 +1,30 @@
 # Operation Ironhold
 
-A complete first-person shooter that runs in a browser tab. One HTML file, no build step,
-no package manager, and not a single image, audio or model file on disk.
+A complete first-person shooter that runs in a browser tab. No build step,
+no package manager at runtime, and not a single image, audio or model file on disk.
 
 **[Play it here](https://starknightt.github.io/operation-ironhold/)**
 
 ![Gameplay](screenshots/gameplay.jpg)
 
-Ten hostiles hold a container yard in Sector 7. You have three minutes to clear it.
+Pick an operation from the main menu: fight through the container yard in Sector 7,
+or a 1950s cul-de-sac on the Nuketown test site. Either way it's a ten-minute
+deathmatch with respawns on both sides.
 
 The entire game — renderer setup, world generation, weapon handling, enemy AI, audio
-synthesis, post-processing and HUD — is about 6,500 lines of JavaScript and CSS inlined
-into a single 290 KB `index.html`. The only external resource is three.js r128, pulled
-from a CDN. Everything else is generated at runtime.
+synthesis, post-processing and HUD — is about 10,900 lines of JavaScript in `js/`,
+loaded as plain script tags from `index.html`. There is no bundler and no module
+system; the only external resource is three.js r128, pulled from a CDN. Everything
+else is generated at runtime.
 
-It was built by an AI agent from five prompts, recorded verbatim in
+It was built by an AI agent from seven prompts, recorded verbatim in
 [PROMPTS.md](PROMPTS.md).
 
 ## Running it
 
-Open `index.html` in any desktop browser. That is the whole installation process.
+Open `index.html` in any desktop browser. That is the whole installation process —
+the scripts under `js/` are plain script tags, so the game runs straight off the
+filesystem with no server and no build.
 
 If you would rather serve it:
 
@@ -48,23 +53,33 @@ will not play on a phone.
 | `Shift` | Sprint, or hold breath while scoped |
 | `Ctrl` | Crouch |
 | `Space` | Jump; tap again in the air to double jump; hold near a ledge to mantle |
-| `1` `2` `3` `4` | M4 carbine / KS-12 pump / P-9 sidearm / SR-7 Longbow |
+| `1` `2` `3` `4` `5` | M4 carbine / KS-12 pump / P-9 sidearm / SR-7 Longbow / SAW-250 LMG |
 | `V` | Toggle the rifle between full auto and semi |
 | Mouse wheel | Cycle weapons |
 | `Esc` | Pause |
 
 ## The round
 
-Eliminate all ten hostiles inside 3:00. You start with 100 health and 50 armor, where armor
-absorbs half of incoming damage until it is gone.
+Ten-minute deathmatch. You start with 100 health and 50 armor; armor absorbs half of
+incoming damage until it is gone, and health knits back up after 4.5 seconds out of the
+line of fire. Dying costs 2.6 seconds — you redeploy at your spawn with a fresh loadout
+and two seconds of protection — and fallen hostiles are replaced the same way. When the
+clock runs out, more eliminations than deaths wins.
 
-Hostiles hold fire for the first three seconds so you can get your bearings, and a combat
-director caps the number shooting at you at any one moment to two. The rest keep
-manoeuvring. That single constraint is what keeps a firefight readable instead of
-collapsing into crossfire you cannot answer.
+On Nuketown both sides spawn like the original: you behind the west house, the squad
+behind the east one. On either map, hostiles hold fire for the first three seconds so
+you can get your bearings, and a combat director caps the number shooting at you at any
+one moment to two. The rest keep manoeuvring. That single constraint is what keeps a
+firefight readable instead of collapsing into crossfire you cannot answer.
 
-Dying or running out the clock ends the round. The report screen shows eliminations,
-headshots, accuracy and time survived.
+The report screen shows eliminations, deaths, headshots and accuracy.
+
+You do not fight alone. Three squadmates — 磐石, 猎鹰, 流星 — hold a loose wedge off
+your shoulder, pick their own targets (and get picked: hostiles engage them too), and
+redeploy eight seconds after going down. Streaks reward staying alive: three kills
+lights a UAV that paints every hostile on the minimap for 25 seconds, five walks an
+airstrike onto the thickest enemy cluster, and seven fires an EMP that paralyses enemy
+fire for 12 seconds. Dying cashes the streak out.
 
 ## Weapons
 
@@ -74,6 +89,7 @@ headshots, accuracy and time survived.
 | 2 | KS-12 Pump | 8 | 48 | Nine pellets per shell, pump between shots |
 | 3 | P-9 Sidearm | 15 | 90 | 430 rpm semi automatic, fastest draw |
 | 4 | SR-7 Longbow | 5 | 25 | Bolt action, a body hit kills |
+| 5 | SAW-250 LMG | 100 | 200 | 800 rpm full auto, slow to aim, long reload |
 
 Each carries a viewmodel built from primitives with gloved hands, sways against mouse
 movement, bobs in time with footsteps, dips off screen to reload and ejects brass that
@@ -85,8 +101,8 @@ so the spray is something you can learn to hold down.
 
 ![Sniper scope](screenshots/scope.jpg)
 
-Right click toggles ADS. Every weapon takes exactly 0.2s to settle in or out, tightens its
-spread, and costs 40% of your movement speed while held.
+Right click toggles ADS. Every weapon settles in a fraction of a second (0.2s, 0.32 for
+the LMG), tightens its spread, and costs 40% of your movement speed while held.
 
 | Weapon | FOV | Zoom | Sight |
 | --- | --- | --- | --- |
@@ -94,6 +110,7 @@ spread, and costs 40% of your movement speed while held.
 | KS-12 Pump | 75 to 60 | 1.3x | Bead raised clear of the heat shield |
 | P-9 Sidearm | 75 to 50 | 1.7x | Three-dot irons with an open notch |
 | SR-7 Longbow | 75 to 15 | 5.8x | Scope overlay, mil-dot reticle |
+| SAW-250 LMG | 75 to 48 | 1.6x | Aperture rear with a hooded post |
 
 The sniper is the one that changes the screen. Scoping swaps the crosshair for a full
 overlay and hides the weapon behind the glass, which the composite shader veils the way
@@ -138,6 +155,24 @@ on a random timer. There is a convolution reverb built from a generated impulse 
 
 ![Start screen](screenshots/menu.jpg)
 
+## The maps
+
+**Warehouse District** (Sector 7) — the original container yard: a two-story
+warehouse with a sniper deck, container canyons, and a burnt-out flatbed in the
+open centre.
+
+**Nuketown** (Nevada Test Site) — a 1950s cul-de-sac: two pastel tract houses you
+can fight through (or mantle onto the porch roofs), a bus and a moving van stalled
+mid-street, wooden fences, backyards with a picnic table and a swing set, and
+desert mesas past the picket line. Bright midday sun instead of the yard's haze.
+
+![Nuketown](screenshots/nuketown.jpg)
+
+The two maps are independent builds captured into swappable records by the map
+registry (`js/10-map-registry.js`): colliders, raycast targets, walkable grids,
+patrol routes, cover anchors, sun/sky/fog and the menu camera all follow the
+selected map. Hovering a menu card previews the map live behind the menu.
+
 ## Performance
 
 Dynamic resolution scaling watches frame times and adjusts render scale to hold the target
@@ -148,7 +183,7 @@ pass for objects that only ever contributed a sub-pixel smudge.
 
 ## Implementation notes
 
-Six things are worth knowing before modifying `index.html`.
+Six things are worth knowing before modifying the game files.
 
 **No environment map.** three.js renders a metal with nothing to reflect as near-black, so
 every material stays close to dielectric (`metalness` under about 0.2) and fakes metal
@@ -204,18 +239,50 @@ pixels thick every edge has to land on a whole device pixel or it smears.
 ## Repository layout
 
 ```
-index.html              the entire game
-PROMPTS.md              the prompts that specify it, verbatim
-screenshots/            images used by this README
-tools/test-harness.js   collision, weapon and AI test suite
-tools/autoplay-bot.js   pathfinding bot for unattended regression runs
+index.html                  markup, CSS, and the script tags that load the game
+js/                         the entire game, plain scripts in load order (00 → 26)
+  00-core.js … 04-sky.js    helpers, audio synth, renderer/post chain, textures, sky
+  05 … 09                   Warehouse District: geometry, clutter, skyline
+  10-map-registry.js        the map swap: captureMap/applyMap + per-map environments
+  11 … 12                   Nuketown: piece builders, ground, backdrop, assembly
+  13 … 26                   queries, FX, viewmodels, weapons, enemies, HUD, input,
+                            shooting, AI, movement, game flow, main loop
+tools/test-harness.js       collision, weapon and AI test suite (part 1)
+tools/test-harness-combat.js enemy watchdog and movement probes (load after part 1)
+tools/autoplay-bot.js       pathfinding bot for unattended regression runs
+scripts/check-file-lines.mjs  the 600-line gate
+scripts/smoke.mjs           headless-Chrome smoke test (menu, map swap, deploy)
 ```
 
-The two files in `tools/` are development-only. Neither is referenced by `index.html`; they
-are pasted into the console or injected over the DevTools protocol. The harness exposes
-collision audits, weapon accuracy and hit-fidelity tests, map boundary probes and an enemy
-watchdog. The bot plays full rounds on its own with configurable aim error and reaction
-delay, which is how the collision and AI fixes were regression tested.
+The two files in `tools/` are development-only, as is everything in `scripts/`.
+None of them are referenced by `index.html`; the harness is pasted into the console
+or injected over the DevTools protocol. The harness exposes collision audits, weapon
+accuracy and hit-fidelity tests, map boundary probes and an enemy watchdog. The bot
+plays full rounds on its own with configurable aim error and reaction delay, which is
+how the collision and AI fixes were regression tested.
+
+## Development
+
+The game itself has no build step, but the repo has tooling. One-time setup:
+
+```bash
+bun install
+bunx lefthook install
+```
+
+Conventions are enforced by a pre-commit hook (lefthook → lint-staged → biome):
+
+- **Biome** formats and lints every staged `.js`/`.json` file (`biome.json`).
+  The game files are classic scripts that share one global lexical scope, so the
+  lint rules that need cross-file knowledge (`noUnusedVariables`, `useConst`, …)
+  are switched off — they misfire on this architecture.
+- **Line gate**: `scripts/check-file-lines.mjs` fails the commit if any tracked
+  source file exceeds 600 lines. When a file grows past the gate, split it at a
+  top-level boundary, add the new `<script>` tag after its siblings, and keep the
+  load order — execution order is the only thing holding the global scope together.
+- `bun scripts/smoke.mjs` loads the game in headless Chrome (with a local
+  `python -m http.server 8123`), fails on any page error, and exercises the map
+  switch in both directions.
 
 ## License
 

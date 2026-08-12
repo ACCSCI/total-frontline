@@ -1,0 +1,23 @@
+{
+  "name": "operation-ironhold",
+  "version": "0.2.0",
+  "private": true,
+  "description": "A first-person shooter that runs in a browser tab. No build step for the game itself; dev tooling only.",
+  "scripts": {
+    "check:lines": "bun scripts/check-file-lines.mjs",
+    "check": "biome check . && bun scripts/check-file-lines.mjs",
+    "format": "biome format --write .",
+    "serve": "python -m http.server 8123"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "lefthook": "^1.12.0",
+    "lint-staged": "^16.1.0",
+    "puppeteer-core": "^24.0.0"
+  },
+  "lint-staged": {
+    "*.{js,mjs,cjs,json}": [
+      "biome check --write --no-errors-on-unmatched"
+    ]
+  }
+}
