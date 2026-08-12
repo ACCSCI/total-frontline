@@ -2,7 +2,7 @@
 /* =========================================================================
    1. AUDIO — 100% procedural Web Audio
    ========================================================================= */
-const SFX = (() => {
+const SFX: any = (() => {
   let ctx = null,
     master = null,
     noiseBuf = null,
@@ -15,7 +15,7 @@ const SFX = (() => {
       if (ctx.state === 'suspended') ctx.resume();
       return;
     }
-    const AC = window.AudioContext || window.webkitAudioContext;
+    const AC = window.AudioContext || (window as any).webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
     const comp = ctx.createDynamicsCompressor();

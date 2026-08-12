@@ -5,7 +5,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const LIMIT = 600;
-const TEXT = /\.(js|mjs|cjs|json|html|css|md|yml|yaml|toml|txt)$/i;
+const TEXT = /\.(js|mjs|cjs|ts|json|html|css|md|yml|yaml|toml|txt)$/i;
 const SKIP = /(^|\/)(bun\.lock|package-lock\.json|LICENSE)$/;
 
 const files = execSync('git ls-files', { encoding: 'utf8' })

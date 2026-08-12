@@ -1,3 +1,4 @@
+// @ts-nocheck -- procedural viewmodel builder; tighten after part() overloads are typed.
 'use strict';
 /* =========================================================================
    8. VIEWMODELS — built from primitives, with gloved hands
@@ -227,7 +228,7 @@ linearizeMats({
   TUBE_MAT,
 });
 
-function part(parent, geo, mat, x, y, z, rx, ry, rz, sx, sy, sz) {
+function part(parent, geo, mat, x, y, z, rx?, ry?, rz?, sx?, sy?, sz?) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x || 0, y || 0, z || 0);
   m.rotation.set(rx || 0, ry || 0, rz || 0);

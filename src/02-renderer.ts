@@ -2,7 +2,7 @@
 /* =========================================================================
    2. RENDERER / SCENE / POST FX
    ========================================================================= */
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('c') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: false,
@@ -89,7 +89,11 @@ function makeRT(w, h, depth) {
   }
   return new THREE.WebGLRenderTarget(w, h, opts);
 }
-let sceneRT, bloomA, bloomB, RTW, RTH;
+let sceneRT: ReturnType<typeof makeRT> | null = null;
+let bloomA: ReturnType<typeof makeRT> | null = null;
+let bloomB: ReturnType<typeof makeRT> | null = null;
+let RTW = 0;
+let RTH = 0;
 /* The whole frame lands in an offscreen target that the composite pass
    upscales, so render resolution can float independently of the canvas. */
 let renderScale = 1.0;
@@ -110,7 +114,7 @@ function allocTargets() {
   bloomB = makeRT(bw, bh, false);
   /* the post chain and particle pools are built further down the file, so the
      boot call has nothing to notify yet */
-  if (allocTargets.onResize) allocTargets.onResize();
+  if ((allocTargets as any).onResize) (allocTargets as any).onResize();
 }
 allocTargets();
 

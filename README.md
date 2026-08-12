@@ -1,9 +1,9 @@
 # 全面战线（Total Frontline）
 
-A complete first-person shooter that runs in a browser tab. No build step,
-no package manager at runtime, and not a single image, audio or model file on disk.
+A complete first-person shooter that runs in a browser tab. The game is authored in
+TypeScript, compiled to one browser script, and has no package manager at runtime.
 
-**[Play it here](https://starknightt.github.io/operation-ironhold/)**
+**[Play it here](https://vibeapps.lumigrav.space/total-frontline/)**
 
 ![Gameplay](screenshots/gameplay.jpg)
 
@@ -12,24 +12,27 @@ or a 1950s cul-de-sac on the Nuketown test site. Either way it's a ten-minute
 deathmatch with respawns on both sides.
 
 The entire game — renderer setup, world generation, weapon handling, enemy AI, audio
-synthesis, post-processing and HUD — is about 10,900 lines of JavaScript in `js/`,
-loaded as plain script tags from `index.html`. There is no bundler and no module
-system; the only external resource is three.js r128, pulled from a CDN. Everything
-else is generated at runtime.
+synthesis, post-processing and HUD — is about 11,200 lines of TypeScript in `src/`.
+The TypeScript compiler preserves the legacy load order in a single `dist/js/game.js`;
+there is no application bundler or module runtime. The only external runtime resource
+is three.js r128, pulled from a CDN. Everything else is generated at runtime.
 
 It was built by an AI agent from seven prompts, recorded verbatim in
 [PROMPTS.md](PROMPTS.md).
 
 ## Running it
 
-Open `index.html` in any desktop browser. That is the whole installation process —
-the scripts under `js/` are plain script tags, so the game runs straight off the
-filesystem with no server and no build.
-
-If you would rather serve it:
+Install the development dependencies and build the static output:
 
 ```bash
-python -m http.server 8123
+bun install
+bun run build
+```
+
+Then serve `dist/`:
+
+```bash
+bun run serve
 ```
 
 Then visit `http://127.0.0.1:8123/index.html`.
@@ -174,7 +177,7 @@ desert mesas past the picket line. Bright midday sun instead of the yard's haze.
 ![Nuketown](screenshots/nuketown.jpg)
 
 The two maps are independent builds captured into swappable records by the map
-registry (`js/10-map-registry.js`): colliders, raycast targets, walkable grids,
+registry (`src/10-map-registry.ts`): colliders, raycast targets, walkable grids,
 patrol routes, cover anchors, sun/sky/fog and the menu camera all follow the
 selected map. Hovering a menu card previews the map live behind the menu.
 
@@ -244,14 +247,16 @@ pixels thick every edge has to land on a whole device pixel or it smears.
 ## Repository layout
 
 ```
-index.html                  markup, CSS, and the script tags that load the game
-js/                         the entire game, plain scripts in load order (00 → 26)
-  00-core.js … 04-sky.js    helpers, audio synth, renderer/post chain, textures, sky
+index.html                  markup, CSS, and the compiled game script tag
+src/                        TypeScript game source in execution order (00 → 26)
+  00-core.ts … 04-sky.ts    helpers, audio synth, renderer/post chain, textures, sky
   05 … 09                   Warehouse District: geometry, clutter, skyline
-  10-map-registry.js        the map swap: captureMap/applyMap + per-map environments
+  10-map-registry.ts        the map swap: captureMap/applyMap + per-map environments
   11 … 12                   Nuketown: piece builders, ground, backdrop, assembly
   13 … 26                   queries, FX, viewmodels, weapons, enemies, HUD, input,
                             shooting, AI, movement, game flow, main loop
+types/legacy-globals.d.ts   migration bridge for the three.js browser global
+tsconfig.json               ordered TypeScript compilation into dist/js/game.js
 tools/test-harness.js       collision, weapon and AI test suite (part 1)
 tools/test-harness-combat.js enemy watchdog and movement probes (load after part 1)
 tools/autoplay-bot.js       pathfinding bot for unattended regression runs
@@ -268,25 +273,35 @@ how the collision and AI fixes were regression tested.
 
 ## Development
 
-The game itself has no build step, but the repo has tooling. One-time setup:
+One-time setup:
 
 ```bash
 bun install
 bunx lefthook install
 ```
 
+Build and validate with:
+
+```bash
+bun run typecheck
+bun run build
+bun run check
+```
+
 Conventions are enforced by a pre-commit hook (lefthook → lint-staged → biome):
 
-- **Biome** formats and lints every staged `.js`/`.json` file (`biome.json`).
-  The game files are classic scripts that share one global lexical scope, so the
+- **Biome** formats and lints every staged `.ts`/`.js`/`.json` file (`biome.json`).
+  The migration-stage game files share one global lexical scope, so the
   lint rules that need cross-file knowledge (`noUnusedVariables`, `useConst`, …)
   are switched off — they misfire on this architecture.
+- **TypeScript** checks 19 gameplay/runtime files plus the three.js r128 API surface.
+  Nine geometry-heavy procedural builders carry an explicit `@ts-nocheck` migration
+  boundary until their variadic placement helpers are converted to typed overloads.
 - **Line gate**: `scripts/check-file-lines.mjs` fails the commit if any tracked
   source file exceeds 600 lines. When a file grows past the gate, split it at a
-  top-level boundary, add the new `<script>` tag after its siblings, and keep the
-  load order — execution order is the only thing holding the global scope together.
+  top-level boundary and add it to the ordered `files` list in `tsconfig.json`.
 - `bun scripts/smoke.mjs` loads the game in headless Chrome (with a local
-  `python -m http.server 8123`), fails on any page error, and exercises the map
+  built `dist/` output), fails on any page error, and exercises the map
   switch in both directions.
 
 ## License

@@ -2,12 +2,12 @@
 /* =========================================================================
    3. PROCEDURAL TEXTURES
    ========================================================================= */
-function cvs(size) {
+function cvs(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement('canvas');
   c.width = c.height = size;
-  return [c, c.getContext('2d')];
+  return [c, c.getContext('2d')!];
 }
-function finishTex(c, rep, srgb) {
+function finishTex(c: HTMLCanvasElement, rep?: [number, number], srgb?: boolean) {
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   if (rep) t.repeat.set(rep[0], rep[1]);
@@ -15,7 +15,7 @@ function finishTex(c, rep, srgb) {
   if (srgb !== false) t.encoding = THREE.sRGBEncoding;
   return t;
 }
-function grain(ctx, size, amt, alpha) {
+function grain(ctx: CanvasRenderingContext2D, size: number, amt: number, alpha?: number) {
   const img = ctx.getImageData(0, 0, size, size),
     d = img.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -27,7 +27,15 @@ function grain(ctx, size, amt, alpha) {
   }
   ctx.putImageData(img, 0, 0);
 }
-function splotches(ctx, size, n, colors, rMin, rMax, alpha) {
+function splotches(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  n: number,
+  colors: string[],
+  rMin: number,
+  rMax: number,
+  alpha: number
+) {
   for (let i = 0; i < n; i++) {
     const x = Math.random() * size,
       y = Math.random() * size,

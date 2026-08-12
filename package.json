@@ -2,22 +2,25 @@
   "name": "total-frontline",
   "version": "0.2.0",
   "private": true,
-  "description": "A first-person shooter that runs in a browser tab. No build step for the game itself; dev tooling only.",
+  "description": "A TypeScript and three.js first-person shooter that runs in a browser tab.",
   "scripts": {
-    "build": "bun scripts/build.mjs",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
     "check:lines": "bun scripts/check-file-lines.mjs",
     "check": "biome check . && bun scripts/check-file-lines.mjs",
     "format": "biome format --write .",
-    "serve": "python -m http.server 8123"
+    "serve": "python -m http.server 8123 --directory dist"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",
+    "@types/three": "0.128.0",
     "lefthook": "^1.12.0",
     "lint-staged": "^16.1.0",
-    "puppeteer-core": "^24.0.0"
+    "puppeteer-core": "^24.0.0",
+    "typescript": "^5.9.3"
   },
   "lint-staged": {
-    "*.{js,mjs,cjs,json}": [
+    "*.{js,mjs,cjs,ts,json}": [
       "biome check --write --no-errors-on-unmatched"
     ]
   }

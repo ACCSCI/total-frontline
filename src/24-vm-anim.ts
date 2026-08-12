@@ -95,7 +95,7 @@ function updateViewmodel(dt, mdx, mdy) {
   /* draw/holster */
   if (player.switching > 0) {
     const w2 = WEAPONS[player.switchTo >= 0 ? player.switchTo : player.weapon];
-    let k;
+    let k = 0;
     if (player.switchTo >= 0) {
       k = 1 - clamp((player.switching - w2.drawTime) / 0.22, 0, 1); // holstering: 0 → 1
     } else {

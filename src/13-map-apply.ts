@@ -29,7 +29,7 @@ function applyMap(rec) {
   skyUniforms.uSunXZ.value.set(E.sunDir.x, E.sunDir.z).normalize();
   for (const k in E.sky) skyUniforms[k].value.copy(SKY_C(E.sky[k]));
   scene.fog.color.set(E.fog);
-  scene.fog.density = E.fogDensity;
+  if (scene.fog instanceof THREE.FogExp2) scene.fog.density = E.fogDensity;
   /* per-map grade: bright pastel suburbia needs a lower exposure and a higher
      bloom threshold than the yard, or every sunlit wall smears into a halo */
   brightMat.uniforms.threshold.value = E.bloomT || 0.95;

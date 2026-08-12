@@ -132,8 +132,8 @@ function requestLock() {
   /* a denied request fires no pointerlockchange, which would leave the round
      live but with no mouse look. fall back to the pause overlay so a second
      click can try again. */
-  clearTimeout(requestLock._t);
-  requestLock._t = setTimeout(() => {
+  clearTimeout((requestLock as any)._t);
+  (requestLock as any)._t = setTimeout(() => {
     if (document.pointerLockElement === document.body) return;
     if (!G.started || G.over) return;
     G.paused = true;
@@ -142,7 +142,7 @@ function requestLock() {
   }, 350);
 }
 /* menu cards: hover previews the map behind the menu, click deploys into it */
-document.querySelectorAll('.mapCard').forEach((card) => {
+document.querySelectorAll<HTMLElement>('.mapCard').forEach((card) => {
   const rec = card.dataset.map === 'nuke' ? MAP_NUKE : MAP_YARD;
   card.addEventListener('mouseenter', () => applyMap(rec));
   card.addEventListener('click', (e) => {
@@ -451,7 +451,7 @@ function alertToGunfire(radius) {
   );
 }
 
-function damageEnemy(e, dmg, head, dir, point, killer) {
+function damageEnemy(e, dmg, head, dir, point, killer?) {
   e.hp -= dmg;
   e.flinch = Math.min(1, e.flinch + (head ? 0.9 : 0.55));
   e.alerted = true;

@@ -1,3 +1,4 @@
+// @ts-nocheck -- procedural scene builder; tighten after shared builder overloads are typed.
 'use strict';
 /* ---- two-story warehouse building (west) — sniper deck ---- */
 {

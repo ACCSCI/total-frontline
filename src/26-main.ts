@@ -15,7 +15,7 @@ let mapAccum = 0,
   const box = new THREE.Box3(),
     sz = new THREE.Vector3();
   scene.traverse((o) => {
-    if (!o.isMesh || !o.castShadow || o.isInstancedMesh) return;
+    if (!(o instanceof THREE.Mesh) || !o.castShadow || o instanceof THREE.InstancedMesh) return;
     box.setFromObject(o);
     box.getSize(sz);
     if (Math.max(sz.x, sz.y, sz.z) < 0.45) o.castShadow = false;

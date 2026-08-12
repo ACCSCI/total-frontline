@@ -7,7 +7,7 @@ const STAND_H = 1.72,
   P_RADIUS = 0.36;
 const SPAWN = { x: 0, z: 24 };
 const GRACE_TIME = 3.0;
-const player = {
+const player: any = {
   pos: new THREE.Vector3(SPAWN.x, 0, SPAWN.z), // FEET
   vel: new THREE.Vector3(),
   yaw: 0,
@@ -60,7 +60,7 @@ const player = {
   dead: false,
   lastHurt: 0,
 };
-const G = {
+const G: any = {
   running: false,
   over: false,
   paused: false,
@@ -92,8 +92,8 @@ const G = {
 /* =========================================================================
    12. HUD
    ========================================================================= */
-const $ = (id) => document.getElementById(id);
-const UI = {
+const $ = (id: string): any => document.getElementById(id);
+const UI: Record<string, any> = {
   hud: $('hud'),
   cctx: $('cross').getContext('2d'),
   hitmark: $('hitmark'),
@@ -257,7 +257,7 @@ function updateDmgArcs(dt) {
    never move. All dimensions below are CSS pixels; drawCrosshair converts them
    to whole device pixels so nothing ever straddles half a pixel.
    ========================================================================= */
-const XH = {
+const XH: any = {
   inGap: 1,
   inLen: 4,
   inThick: 2, // inner marks, measured out from centre

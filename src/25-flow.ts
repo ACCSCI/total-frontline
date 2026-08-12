@@ -198,8 +198,8 @@ function streakPop(text) {
   UI.streakPop.classList.remove('on');
   void UI.streakPop.offsetWidth;
   UI.streakPop.classList.add('on');
-  clearTimeout(streakPop._t);
-  streakPop._t = setTimeout(() => UI.streakPop.classList.remove('on'), 2600);
+  clearTimeout((streakPop as any)._t);
+  (streakPop as any)._t = setTimeout(() => UI.streakPop.classList.remove('on'), 2600);
 }
 function noteKillstreak() {
   G.streak++;
@@ -261,7 +261,7 @@ function callAirstrike() {
   G.airstrike = { x: best.x, z: best.z, t: 1.4, n: 3 };
 }
 const _blastDir = new THREE.Vector3();
-function explodeAt(x, z, killer) {
+function explodeAt(x, z, killer?) {
   killer = killer || '空袭';
   const gy = groundAt(x, z, 3);
   const y = gy === null ? 0 : gy;
@@ -338,7 +338,7 @@ function buildHeli() {
   part(tail, B(0.05, 0.25, 1.5), HELI_MAT, 0, 0, 0);
   g.add(tail);
   g.traverse((o) => {
-    if (o.isMesh) o.castShadow = true;
+    if (o instanceof THREE.Mesh) o.castShadow = true;
   });
   g.userData.rotor = rotor;
   g.userData.tail = tail;
@@ -363,7 +363,7 @@ function buildGunship() {
   }
   part(g, B(0.5, 0.5, 2.6), HELI_MAT, 0.95, -0.8, 1.0); // side gun pack
   g.traverse((o) => {
-    if (o.isMesh) o.castShadow = true;
+    if (o instanceof THREE.Mesh) o.castShadow = true;
   });
   g.userData.props = props;
   return g;
@@ -572,9 +572,9 @@ function onResize() {
 addEventListener('resize', onResize);
 /* now that the post chain and particle pools exist, let target reallocation
    (resize or a dynamic-resolution step) keep their uniforms in sync */
-allocTargets.onResize = () => {
+(allocTargets as any).onResize = () => {
   compMat.uniforms.res.value.set(RTW, RTH);
   PS_SPARK.pts.material.uniforms.hscale.value = RTH * 0.5;
   PS_SOFT.pts.material.uniforms.hscale.value = RTH * 0.5;
 };
-allocTargets.onResize();
+(allocTargets as any).onResize();

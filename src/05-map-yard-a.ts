@@ -23,7 +23,7 @@ const TEX_CONCRETE_1 = TEX.concrete.clone();
 TEX_CONCRETE_1.repeat.set(1, 1);
 TEX_CONCRETE_1.needsUpdate = true;
 
-const MAT = {
+const MAT: Record<string, any> = {
   floor: new THREE.MeshStandardMaterial({ map: TEX.concrete, roughness: 0.96, metalness: 0.02 }),
   concrete: new THREE.MeshStandardMaterial({
     map: TEX_CONCRETE_1,
