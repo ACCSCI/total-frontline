@@ -64,6 +64,8 @@ function frame(now) {
         if (as.n <= 0) G.airstrike = null;
       }
     }
+    if (G.heli) updateHeli(dt);
+    if (G.gunship) updateGunship(dt);
     /* deathmatch bookkeeping: the squad refills its dead, and a dead player
        is back on their feet in 2.6s — only the clock ends the round */
     for (let i = respawnQueue.length - 1; i >= 0; i--) {
@@ -121,6 +123,20 @@ function frame(now) {
       const t = Math.max(0, G.time);
       UI.timer.textContent = Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
       UI.timer.classList.toggle('warn', t < 30);
+      /* killstreak status: active countdowns, else progress toward the next */
+      let sl = '';
+      if (G.uavT > 0) sl = '无人侦察机 ' + Math.ceil(G.uavT) + 's';
+      if (G.empT > 0) sl = (sl ? sl + ' · ' : '') + '电磁脉冲 ' + Math.ceil(G.empT) + 's';
+      if (G.heli) sl = (sl ? sl + ' · ' : '') + '武装直升机 ' + Math.ceil(G.heli.t) + 's';
+      if (G.gunship) sl = (sl ? sl + ' · ' : '') + '空中炮艇 ' + Math.ceil(G.gunship.t) + 's';
+      if (G.jug) sl = (sl ? sl + ' · ' : '') + '无畏战士';
+      if (!sl && G.streak > 0 && !player.dead) {
+        const next = STREAK_LADDER.find((s) => s.at > G.streak);
+        sl = next
+          ? `连杀 ×${G.streak} — 再消灭 ${next.at - G.streak} 人：${next.name}`
+          : `连杀 ×${G.streak}`;
+      }
+      if (UI.streakLine.textContent !== sl) UI.streakLine.textContent = sl;
     }
   }
   mapAccum += dt;

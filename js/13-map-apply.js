@@ -30,6 +30,10 @@ function applyMap(rec) {
   for (const k in E.sky) skyUniforms[k].value.copy(SKY_C(E.sky[k]));
   scene.fog.color.set(E.fog);
   scene.fog.density = E.fogDensity;
+  /* per-map grade: bright pastel suburbia needs a lower exposure and a higher
+     bloom threshold than the yard, or every sunlit wall smears into a halo */
+  brightMat.uniforms.threshold.value = E.bloomT || 0.95;
+  compMat.uniforms.expo.value = E.expo || 1.0;
   walkable.reset();
   $('mapMode').textContent = rec.tag;
   $('endSub').textContent = rec.sub;

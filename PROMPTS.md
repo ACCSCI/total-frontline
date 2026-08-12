@@ -257,3 +257,19 @@ Two messages. The first followed a question about the Nuketown spawn point.
 ```text
 而且你这个nuketown的楼房没有2楼，上不去
 ```
+
+---
+
+## 11. Manually-triggered killstreaks, plus three new ones
+
+```text
+最好连杀奖励好了之后放在屏幕左侧让玩家自己触发，然后加入武装直升机，空中炮艇和无畏战士
+```
+
+---
+
+## 12. Nuketown lighting and bloom
+
+```text
+核弹小镇的光影有点奇怪，有的地方有莫名其妙的辉光问题，不如仓库的写实
+```

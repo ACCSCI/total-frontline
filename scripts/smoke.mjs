@@ -67,7 +67,9 @@ const nuke = await page.evaluate(() => ({
   /* original-Nuketown spawns: the ground squad musters behind the east house,
      while the two upstairs marksmen start on their second-floor routes */
   squadEast: enemies.filter((e) => !e.upper).every((e) => e.obj.position.x > 17.5),
-  upstairs: enemies.filter((e) => e.upper).every((e) => e.obj.position.y > 2.5),
+  upstairs: enemies
+    .filter((e) => e.upper)
+    .every((e) => e.obj.position.x > 7 && e.obj.position.y > 2.5),
   /* and the walkable flood fill from the west-backyard spawn reaches everywhere
      (points picked on open floor, clear of the picnic table and swing posts) */
   connected: [
@@ -195,27 +197,51 @@ const picksAlly = await page.evaluate(() => {
 });
 check(picksAlly, 'hostiles engage squadmates, not just the player');
 
-/* killstreaks: 3 lights the UAV, 5 calls the airstrike, 7 fires the EMP */
+/* killstreaks: earning docks them on the left, keys 6–0 fire them */
 const streaks = await page.evaluate(() => {
   const out = {};
+  G.streaksReady.length = 0;
   const kill = () => {
     const e = enemies.find((x) => !x.dead);
     damageEnemy(e, 9999, false, null, e.obj.position);
   };
   G.streak = 2;
   kill();
-  out.uav = G.streak === 3 && G.uavT > 20;
+  out.earned = G.streaksReady.map((s) => s.id).join();
+  out.dock = document.getElementById('streakDock').children.length;
+  out.pop = document.getElementById('streakPop').textContent.includes('就绪');
+  activateStreak(0);
+  out.uav = G.uavT > 20 && G.streaksReady.length === 0;
   G.streak = 4;
   kill();
-  out.airstrike = G.streak === 5 && !!G.airstrike;
+  activateStreak(0);
+  out.airstrike = !!G.airstrike;
   G.streak = 6;
   kill();
-  out.emp = G.streak === 7 && G.empT > 10;
+  activateStreak(0);
+  out.emp = G.empT > 10;
+  G.streak = 7;
+  kill();
+  activateStreak(0);
+  out.heli = !!G.heli;
+  G.streak = 9;
+  kill();
+  activateStreak(0);
+  out.gunship = !!G.gunship;
+  G.streak = 11;
+  kill();
+  activateStreak(0);
+  out.jug = G.jug === true && player.armor === 300 && player.armorMax === 300;
   return out;
 });
-check(streaks.uav, '3 kills: UAV comes online');
-check(streaks.airstrike, '5 kills: airstrike inbound');
+check(streaks.earned === 'uav' && streaks.dock === 1, '3 kills: UAV readied on the left dock');
+check(streaks.pop, 'killstreak banner pops under the timer');
+check(streaks.uav, 'activating the UAV starts the sweep');
+check(streaks.airstrike, '5 kills: airstrike callable');
 check(streaks.emp, '7 kills: EMP paralyses enemy fire');
+check(streaks.heli, '8 kills: attack helo on station');
+check(streaks.gunship, '10 kills: gunship in its orbit');
+check(streaks.jug, '12 kills: juggernaut armour suits up');
 
 /* the LMG: slot 5 switches in and shows up on the HUD in Chinese */
 await page.evaluate(() => switchWeapon(4));
@@ -228,6 +254,35 @@ const lmg = await page.evaluate(() => ({
 }));
 check(lmg.id === 'lmg' && lmg.name === 'SAW-250 机枪', 'slot 5 is the SAW-250 LMG');
 check(lmg.mode === '全自动' && lmg.slots === 5, 'HUD weapon mode is Chinese, five slots listed');
+
+/* respawns honour the sides: wipe the squad, everyone comes back east.
+   Gun platforms come off station first and the AI is frozen for the wait, so
+   what gets measured is the spawn point, not where a body walked or fell. */
+await page.evaluate(() => {
+  if (G.heli) {
+    scene.remove(G.heli.obj);
+    G.heli = null;
+  }
+  if (G.gunship) {
+    scene.remove(G.gunship.obj);
+    G.gunship = null;
+  }
+  window._ue = updateEnemy;
+  updateEnemy = () => {};
+  for (const e of enemies) if (!e.dead) damageEnemy(e, 9999, false, null, e.obj.position, '测试');
+});
+await new Promise((r) => setTimeout(r, 7500));
+const sides = await page.evaluate(() => {
+  updateEnemy = window._ue;
+  return {
+    groundEast: enemies.filter((e) => !e.upper).every((e) => e.obj.position.x > 17.5),
+    upperEast: enemies
+      .filter((e) => e.upper)
+      .every((e) => e.obj.position.x > 7 && e.obj.position.y > 2.5),
+  };
+});
+check(sides.groundEast, 'ground squad always respawns behind the east house');
+check(sides.upperEast, 'upstairs marksmen respawn in the east house');
 
 if (errors.length) {
   console.log('page errors:');

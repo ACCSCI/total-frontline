@@ -14,6 +14,7 @@ const player = {
   pitch: 0,
   hp: 100,
   armor: 50,
+  armorMax: 50,
   height: STAND_H,
   eye: STAND_H,
   onGround: true,
@@ -73,6 +74,10 @@ const G = {
   uavT: 0,
   empT: 0,
   airstrike: null,
+  streaksReady: [],
+  heli: null,
+  gunship: null,
+  jug: false,
   headshots: 0,
   shots: 0,
   hits: 0,
@@ -106,6 +111,9 @@ const UI = {
   reloadHint: $('reloadHint'),
   timer: $('timer'),
   killCount: $('killCount'),
+  streakPop: $('streakPop'),
+  streakLine: $('streakLine'),
+  streakDock: $('streakDock'),
   lowhp: $('lowhp'),
   edgeGlow: $('edgeGlow'),
   minimap: $('minimap'),
@@ -130,7 +138,7 @@ function updateVitalsUI() {
   UI.hpNum.textContent = Math.max(0, Math.round(player.hp));
   UI.apNum.textContent = Math.max(0, Math.round(player.armor));
   UI.hpFill.style.transform = `scaleX(${clamp(player.hp / 100, 0, 1)})`;
-  UI.apFill.style.transform = `scaleX(${clamp(player.armor / 50, 0, 1)})`;
+  UI.apFill.style.transform = `scaleX(${clamp(player.armor / (player.armorMax || 50), 0, 1)})`;
   UI.hpFill.classList.toggle('low', player.hp <= 30);
 }
 function updateAmmoUI() {
@@ -178,6 +186,15 @@ function killFeed(victim, head, killer) {
     setTimeout(() => el.remove(), 320);
   }, 4200);
   while (UI.feed.children.length > 5) UI.feed.firstChild.remove();
+}
+/* killstreaks waiting on the player's call — docked on the left, keys 6–0 */
+function updateStreakDock() {
+  const keys = ['6', '7', '8', '9', '0'];
+  let html = '';
+  G.streaksReady.forEach((s, i) => {
+    html += `<div class="sk"><b>${keys[i]}</b><span>${s.name}</span></div>`;
+  });
+  UI.streakDock.innerHTML = html;
 }
 function pushComms(who, text) {
   const el = document.createElement('div');

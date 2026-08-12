@@ -443,11 +443,13 @@ const MAP_NUKE = captureMap(_preNukeScene, {
       [1, 20],
     ], // street north/south
     [
-      [-16, -6],
-      [-10.5, -4],
-      [-16, -3],
-      [-9.5, -7],
-    ], // west house, UPSTAIRS
+      [9.5, 1.5],
+      [13, 2],
+      [16.5, 3],
+      [13, 4.5],
+      [15.5, 6.3],
+      [9.5, 5.5],
+    ], // east house, UPSTAIRS (north lane — the upper floor only spans z 1..7)
     [
       [10, 4],
       [16, 5],
@@ -503,23 +505,25 @@ const MAP_NUKE = captureMap(_preNukeScene, {
   env: {
     sunDir: NUKE_SUN.clone(),
     sunColor: 0xfff3dc,
-    sunInt: 2.5,
+    sunInt: 2.1,
     hemiSky: 0x9dbfe0,
     hemiGround: 0x77854f,
-    hemiInt: 0.9,
+    hemiInt: 0.74,
     bounce: 0xbfa67e,
     skyFill: 0xa3bdd9,
     fog: 0xc2cfd8,
     fogDensity: 0.0052,
+    bloomT: 1.3,
+    expo: 0.88,
     sky: {
       uZen: '#24529e',
       uHigh: '#4178c0',
       uMid: '#7fa9d4',
       uLow: '#b9cedd',
-      uHaze: '#d3d9d6',
+      uHaze: '#c2c8c4',
       uGround: '#b09b72',
       uCloudD: '#93a0ac',
-      uCloudL: '#ffffff',
+      uCloudL: '#e0ddd4',
     },
   },
 });

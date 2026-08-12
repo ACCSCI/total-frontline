@@ -102,6 +102,18 @@ function resetWorldState() {
   G.uavT = 0;
   G.empT = 0;
   G.airstrike = null;
+  G.streaksReady.length = 0;
+  G.jug = false;
+  player.armorMax = 50;
+  if (G.heli) {
+    scene.remove(G.heli.obj);
+    G.heli = null;
+  }
+  if (G.gunship) {
+    scene.remove(G.gunship.obj);
+    G.gunship = null;
+  }
+  updateStreakDock();
   G.headshots = 0;
   G.shots = 0;
   G.hits = 0;
@@ -160,6 +172,8 @@ function respawnPlayer() {
   player.jumpsLeft = 1;
   player.shake = 0;
   player.landShake = 0;
+  player.armorMax = 50;
+  G.jug = false; // the suit is lost with the body
   WEAPONS[0].vm.group.visible = true;
   G.protect = 2.0;
   G.dmgFlash = 0;
@@ -168,17 +182,56 @@ function respawnPlayer() {
 }
 
 /* ------------------------- killstreaks -------------------------
-   3 连杀 无人侦察机 / 5 连杀 空袭 / 7 连杀 电磁脉冲。阵亡清零。 */
+   3 侦察机 / 5 空袭 / 7 电磁脉冲 / 8 武装直升机 / 10 空中炮艇 / 12 无畏战士。
+   达标只进待命栏（屏幕左侧），按 6–0 手动释放；阵亡清连杀，不清已就绪奖励。 */
+const STREAK_LADDER = [
+  { at: 3, id: 'uav', name: '无人侦察机' },
+  { at: 5, id: 'airstrike', name: '空袭' },
+  { at: 7, id: 'emp', name: '电磁脉冲' },
+  { at: 8, id: 'heli', name: '武装直升机' },
+  { at: 10, id: 'gunship', name: '空中炮艇' },
+  { at: 12, id: 'juggernaut', name: '无畏战士' },
+];
+/* the banner under the timer — comms text alone was too easy to miss */
+function streakPop(text) {
+  UI.streakPop.textContent = text;
+  UI.streakPop.classList.remove('on');
+  void UI.streakPop.offsetWidth;
+  UI.streakPop.classList.add('on');
+  clearTimeout(streakPop._t);
+  streakPop._t = setTimeout(() => UI.streakPop.classList.remove('on'), 2600);
+}
 function noteKillstreak() {
   G.streak++;
-  if (G.streak === 3) {
+  for (const s of STREAK_LADDER) {
+    if (s.at !== G.streak) continue;
+    if (G.streaksReady.length >= 5) break; // the dock has five slots, 6–0
+    G.streaksReady.push(s);
+    updateStreakDock();
+    streakPop(s.name + ' 已就绪 — 按 ' + '67890'[G.streaksReady.length - 1]);
+    SFX.radio();
+  }
+}
+function activateStreak(i) {
+  const s = G.streaksReady[i];
+  if (!s || player.dead || !G.running) return;
+  G.streaksReady.splice(i, 1);
+  updateStreakDock();
+  streakPop(s.name + ' 已激活');
+  if (s.id === 'uav') {
     G.uavT = 25;
     comms(null, '无人侦察机上线 — 全图敌情可见', true);
-  } else if (G.streak === 5) {
+  } else if (s.id === 'airstrike') {
     callAirstrike();
-  } else if (G.streak === 7) {
+  } else if (s.id === 'emp') {
     G.empT = 12;
     comms(null, '电磁脉冲释放 — 敌方火力瘫痪', true);
+  } else if (s.id === 'heli') {
+    callHeli();
+  } else if (s.id === 'gunship') {
+    callGunship();
+  } else if (s.id === 'juggernaut') {
+    goJuggernaut();
   }
 }
 function callAirstrike() {
@@ -208,7 +261,8 @@ function callAirstrike() {
   G.airstrike = { x: best.x, z: best.z, t: 1.4, n: 3 };
 }
 const _blastDir = new THREE.Vector3();
-function explodeAt(x, z) {
+function explodeAt(x, z, killer) {
+  killer = killer || '空袭';
   const gy = groundAt(x, z, 3);
   const y = gy === null ? 0 : gy;
   for (let i = 0; i < 22; i++)
@@ -236,11 +290,208 @@ function explodeAt(x, z) {
     const d = Math.hypot(e.obj.position.x - x, e.obj.position.z - z);
     if (d < 6.5) {
       _blastDir.set(e.obj.position.x - x, 0, e.obj.position.z - z);
-      damageEnemy(e, 400 * clamp(1 - d / 8, 0.35, 1), false, _blastDir, e.obj.position, '空袭');
+      damageEnemy(e, 400 * clamp(1 - d / 8, 0.35, 1), false, _blastDir, e.obj.position, killer);
     }
   }
   const dp = Math.hypot(player.pos.x - x, player.pos.z - z);
-  if (dp < 5) damagePlayer(60 * clamp(1 - dp / 6, 0.3, 1), _blastDir.set(x, y, z), '空袭');
+  if (dp < 5) damagePlayer(60 * clamp(1 - dp / 6, 0.3, 1), _blastDir.set(x, y, z), killer);
+}
+
+/* ------------------- attack helo / gunship -------------------
+   An orbiting gun platform that strafes whatever has sky. Houses genuinely
+   protect: the LOS ray from the orbit eats their roofs, so indoors is safe. */
+const HELI_MAT = new THREE.MeshStandardMaterial({
+  color: 0x33383d,
+  roughness: 0.55,
+  metalness: 0.35,
+});
+const HELI_GLASS = new THREE.MeshStandardMaterial({
+  color: 0x1c2836,
+  roughness: 0.15,
+  metalness: 0.3,
+});
+linearizeMats({ HELI_MAT, HELI_GLASS });
+
+function buildHeli() {
+  const g = new THREE.Group();
+  part(g, B(2.1, 1.25, 4.4), HELI_MAT, 0, 0, 0); // fuselage
+  part(g, B(1.7, 0.85, 1.3), HELI_GLASS, 0, 0.12, -2.3); // canopy
+  part(g, B(0.5, 0.5, 3.6), HELI_MAT, 0, 0.25, 3.7); // tail boom
+  part(g, B(0.14, 1.3, 0.8), HELI_MAT, 0, 0.9, 5.3); // fin
+  part(g, B(0.14, 0.5, 1.4), HELI_MAT, 0, 0.35, 5.3);
+  for (const s of [-1, 1]) {
+    part(g, B(0.12, 0.12, 2.8), HELI_MAT, s * 0.85, -1.05, -0.2); // skids
+    part(g, B(0.1, 0.5, 0.1), HELI_MAT, s * 0.85, -0.75, -1.2);
+    part(g, B(0.1, 0.5, 0.1), HELI_MAT, s * 0.85, -0.75, 0.9);
+  }
+  part(g, B(3.4, 0.18, 0.9), HELI_MAT, 0, -0.1, 0.1); // stub wings
+  part(g, CYLZ(0.07, 0.07, 1.0, 8), HELI_MAT, 0, -0.55, -2.6); // chin gun
+  const rotor = new THREE.Group();
+  rotor.position.set(0, 0.95, 0);
+  part(rotor, B(8.0, 0.05, 0.4), HELI_MAT, 0, 0, 0);
+  part(rotor, B(0.4, 0.05, 8.0), HELI_MAT, 0, 0, 0);
+  part(rotor, CYL(0.12, 0.12, 0.5, 8), HELI_MAT, 0, -0.1, 0);
+  g.add(rotor);
+  const tail = new THREE.Group();
+  tail.position.set(0.3, 0.75, 5.35);
+  part(tail, B(0.05, 1.5, 0.25), HELI_MAT, 0, 0, 0);
+  part(tail, B(0.05, 0.25, 1.5), HELI_MAT, 0, 0, 0);
+  g.add(tail);
+  g.traverse((o) => {
+    if (o.isMesh) o.castShadow = true;
+  });
+  g.userData.rotor = rotor;
+  g.userData.tail = tail;
+  return g;
+}
+function buildGunship() {
+  const g = new THREE.Group();
+  part(g, B(1.9, 1.9, 9.5), HELI_MAT, 0, 0, 0); // fuselage
+  part(g, B(1.5, 1.0, 2.2), HELI_GLASS, 0, 0.3, -4.6); // cockpit
+  part(g, B(13.5, 0.22, 2.4), HELI_MAT, 0, 0.5, -0.6); // wing
+  part(g, B(5.2, 0.18, 1.4), HELI_MAT, 0, 0.7, 4.4); // tailplane
+  part(g, B(0.18, 2.0, 1.6), HELI_MAT, 0, 1.2, 4.6); // fin
+  const props = [];
+  for (const s of [-6.2, -3.4, 3.4, 6.2]) {
+    part(g, CYLZ(0.45, 0.45, 1.7, 10), HELI_MAT, s, 0.1, -1.1); // engine nacelles
+    const pr = new THREE.Group();
+    pr.position.set(s, 0.1, -2.1);
+    part(pr, B(0.06, 2.1, 0.16), HELI_MAT, 0, 0, 0);
+    part(pr, B(2.1, 0.06, 0.16), HELI_MAT, 0, 0, 0);
+    g.add(pr);
+    props.push(pr);
+  }
+  part(g, B(0.5, 0.5, 2.6), HELI_MAT, 0.95, -0.8, 1.0); // side gun pack
+  g.traverse((o) => {
+    if (o.isMesh) o.castShadow = true;
+  });
+  g.userData.props = props;
+  return g;
+}
+
+/* nearest living hostile with clear sky, never one huddled next to the player */
+function skyTarget(from, maxDist, minPlayerDist) {
+  let best = null,
+    bd = maxDist;
+  for (const e of enemies) {
+    if (e.dead) continue;
+    const d = Math.hypot(e.obj.position.x - from.x, e.obj.position.z - from.z);
+    if (d >= bd) continue;
+    const dp = Math.hypot(e.obj.position.x - player.pos.x, e.obj.position.z - player.pos.z);
+    if (dp < minPlayerDist) continue; // danger close is off the cards
+    _allyT.set(e.obj.position.x, e.obj.position.y + 1.2, e.obj.position.z);
+    _revDir.subVectors(_allyT, from);
+    const len = _revDir.length();
+    _revDir.divideScalar(len);
+    losRay.set(from, _revDir);
+    losRay.far = len - 0.4;
+    if (losRay.intersectObjects(worldSolid, false).length) continue;
+    bd = d;
+    best = e;
+  }
+  return best;
+}
+const _skyEnd = new THREE.Vector3();
+function heliShoot(h, e) {
+  const from = h.obj.position;
+  _skyEnd.set(
+    e.obj.position.x + rand(-0.5, 0.5),
+    e.obj.position.y + 1.2,
+    e.obj.position.z + rand(-0.5, 0.5)
+  );
+  enemyMuzzleFlash(from);
+  spawnTracer(from, _skyEnd, 0xffd27a, 1.4);
+  SFX.gunshot(
+    'rifle',
+    clamp((from.x - camera.position.x) / 16, -1, 1),
+    from.distanceTo(camera.position)
+  );
+  if (Math.random() < 0.5) {
+    _revDir.subVectors(_skyEnd, from).normalize();
+    damageEnemy(e, rand(14, 22), false, _revDir, _skyEnd, '武装直升机');
+  }
+}
+function callHeli() {
+  if (G.heli) {
+    G.heli.t = 40; // already on station: refuel and rearm
+  } else {
+    const obj = buildHeli();
+    scene.add(obj);
+    G.heli = { obj, t: 40, ang: rand(0, 7), fireT: 1.2, burst: 0, burstT: 0, tgt: null };
+  }
+  comms(null, '武装直升机已就位 — 正在巡逻支援', true);
+}
+function updateHeli(dt) {
+  const h = G.heli;
+  h.t -= dt;
+  if (h.t <= 0) {
+    scene.remove(h.obj);
+    G.heli = null;
+    return;
+  }
+  h.ang += dt * 0.33;
+  h.obj.position.set(Math.cos(h.ang) * 18, 13, Math.sin(h.ang) * 18);
+  h.obj.rotation.set(0, PI - h.ang, 0.14); // nose along the orbit, banked in
+  h.obj.userData.rotor.rotation.y += dt * 24;
+  h.obj.userData.tail.rotation.x += dt * 30;
+  if (h.tgt && h.tgt.dead) h.tgt = null;
+  h.fireT -= dt;
+  if (h.fireT <= 0) {
+    h.tgt = skyTarget(h.obj.position, 45, 4);
+    h.burst = h.tgt ? randI(3, 5) : 0;
+    h.fireT = h.tgt ? rand(0.9, 1.5) : 0.4;
+  }
+  if (h.burst > 0 && h.tgt && !h.tgt.dead) {
+    h.burstT -= dt;
+    if (h.burstT <= 0) {
+      h.burstT = 0.09;
+      h.burst--;
+      heliShoot(h, h.tgt);
+    }
+  }
+}
+function callGunship() {
+  if (G.gunship) {
+    G.gunship.t = 25;
+  } else {
+    const obj = buildGunship();
+    scene.add(obj);
+    G.gunship = { obj, t: 25, ang: rand(0, 7), fireT: 1.5 };
+  }
+  comms(null, '空中炮艇已进入航线 — 火力覆盖开始', true);
+}
+function updateGunship(dt) {
+  const s = G.gunship;
+  s.t -= dt;
+  if (s.t <= 0) {
+    scene.remove(s.obj);
+    G.gunship = null;
+    return;
+  }
+  s.ang += dt * 0.22;
+  s.obj.position.set(Math.cos(s.ang) * 26, 19, Math.sin(s.ang) * 26);
+  s.obj.rotation.set(0, PI - s.ang, 0.1);
+  for (const pr of s.obj.userData.props) pr.rotation.z += dt * 40;
+  s.fireT -= dt;
+  if (s.fireT <= 0) {
+    const e = skyTarget(s.obj.position, 60, 8);
+    if (e) {
+      const x = e.obj.position.x,
+        z = e.obj.position.z;
+      spawnTracer(s.obj.position, _skyEnd.set(x, e.obj.position.y + 1, z), 0xfff3c8, 2.2);
+      explodeAt(x, z, '空中炮艇');
+      s.fireT = rand(1.0, 1.6);
+    } else s.fireT = 0.5;
+  }
+}
+/* juggernaut: 300 armour and small-arms resistance until you go down */
+function goJuggernaut() {
+  G.jug = true;
+  player.armorMax = 300;
+  player.armor = 300;
+  player.hp = 100;
+  updateVitalsUI();
+  comms(null, '无畏战士装甲已着装 — 正面推平他们', true);
 }
 function startGame() {
   resetWorldState();

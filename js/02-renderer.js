@@ -228,7 +228,7 @@ const compMat = postMat(
   `
   uniform sampler2D tScene, tBloom;
   uniform vec2  res;
-  uniform float time, bloom, vig, dmg, low, ab, flash, scope;
+  uniform float time, bloom, vig, dmg, low, ab, flash, scope, expo;
   varying vec2 vUv;
   vec3 aces(vec3 x){
     const float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14;
@@ -257,7 +257,7 @@ const compMat = postMat(
     float hi = smoothstep(0.30, 0.95, lum);
     col *= mix(vec3(1.0), vec3(0.945, 0.985, 1.095), sh);
     col *= mix(vec3(1.0), vec3(1.075, 1.012, 0.925), hi);
-    col = aces(col * 1.14);
+    col = aces(col * 1.14 * expo);
     /* Filmic S-curve to pull the milk out of the midtones, then a small cool
        lift. Without the lift the curve plus the contrast stretch drives any
        surface facing away from the sun to a solid black hole. */
@@ -305,5 +305,6 @@ const compMat = postMat(
     ab: { value: 0.5 },
     flash: { value: 0 },
     scope: { value: 0 },
+    expo: { value: 1.0 },
   }
 );

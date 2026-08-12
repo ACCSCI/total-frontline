@@ -420,14 +420,21 @@ function makeEnemy(i) {
 function placeEnemy(e) {
   const zone = CUR && CUR.enemyZone;
   if (zone && !e.upper) {
-    for (let t = 0; t < 14; t++) {
+    for (let t = 0; t < 20; t++) {
       const x = rand(zone.x0, zone.x1),
         z = rand(zone.z0, zone.z1);
-      if (Math.hypot(x - player.pos.x, z - player.pos.z) < 6) continue;
-      if (blocked(x, z, 0.3, 1.65, 0.5) || !walkable(x, z)) continue;
+      if (Math.hypot(x - player.pos.x, z - player.pos.z) < 8) continue;
+      if (blocked(x, z, 0.3, 1.65, 0.5)) continue;
+      if (t < 12 && !walkable(x, z)) continue; // late tries: standable is enough
       e.obj.position.set(x, 0, z);
       return;
     }
+    /* never fall back to a patrol waypoint here — those roam the whole map,
+       and one behind the player's spawn reads as an enemy materialising over
+       his shoulder. Worst case is the middle of the muster zone. */
+    const f = nearestFree((zone.x0 + zone.x1) / 2, (zone.z0 + zone.z1) / 2, 0.5, 1.7, 8, 0);
+    e.obj.position.set(f[0], 0, f[1]);
+    return;
   }
   e.obj.position.set(e.startPos[0], e.floorY, e.startPos[1]);
 }

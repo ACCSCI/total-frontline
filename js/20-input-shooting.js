@@ -27,6 +27,11 @@ addEventListener('keydown', (e) => {
       'Digit3',
       'Digit4',
       'Digit5',
+      'Digit6',
+      'Digit7',
+      'Digit8',
+      'Digit9',
+      'Digit0',
       'KeyV',
       'Tab',
       'ControlLeft',
@@ -40,6 +45,12 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Digit3') switchWeapon(2);
   if (e.code === 'Digit4') switchWeapon(3);
   if (e.code === 'Digit5') switchWeapon(4);
+  /* killstreaks docked on the left fire on 6–0, in the order they were earned */
+  if (e.code === 'Digit6') activateStreak(0);
+  if (e.code === 'Digit7') activateStreak(1);
+  if (e.code === 'Digit8') activateStreak(2);
+  if (e.code === 'Digit9') activateStreak(3);
+  if (e.code === 'Digit0') activateStreak(4);
   if (e.code === 'KeyV') {
     const w = WEAPONS[player.weapon];
     if (w.semiToggle) {
@@ -510,7 +521,7 @@ function vmKick(w) {
 function damagePlayer(amount, fromPos, killer) {
   if (player.dead || G.over || G.protect > 0) return;
   player.lastHurt = perfNow;
-  let dmg = amount;
+  let dmg = G.jug ? amount * 0.45 : amount; // juggernaut plating shrugs small arms
   if (player.armor > 0) {
     const absorbed = dmg * 0.5;
     player.armor -= absorbed;

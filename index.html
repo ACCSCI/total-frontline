@@ -182,6 +182,12 @@
   @keyframes cmin{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
   .cm.out{opacity:0;transition:opacity .5s linear;}
 
+  /* killstreak dock, left side above the comms */
+  #streakDock{position:absolute;left:26px;top:248px;display:flex;flex-direction:column;gap:5px;align-items:flex-start;}
+  .sk{display:flex;align-items:center;gap:8px;padding:5px 11px;font-size:10.5px;letter-spacing:.16em;font-weight:700;
+    color:#fff;border-left:2px solid var(--amber);background:rgba(255,179,64,.10);animation:kfin .22s ease-out;}
+  .sk b{font-size:9.5px;color:var(--amber);border:1px solid rgba(255,179,64,.55);padding:1px 5px;font-weight:800;}
+
   /* minimap */
   #mapWrap{position:absolute;left:26px;top:26px;padding:6px;}
   #mapWrap .lbl{margin-bottom:4px;display:flex;justify-content:space-between;}
@@ -193,6 +199,13 @@
   #timer.warn{color:var(--red);animation:bl 1s steps(1,end) infinite;}
   #objective{font-size:10px;letter-spacing:.26em;color:rgba(223,230,236,.55);margin-top:5px;font-weight:600;}
   #objective b{color:var(--amber);font-size:12px;}
+  /* killstreak banner + status line */
+  #streakPop{font-size:16px;font-weight:800;letter-spacing:.3em;color:var(--amber);margin-top:7px;
+    opacity:0;transform:scale(.82);transition:all .18s ease-out;
+    text-shadow:0 0 16px rgba(255,179,64,.55),0 2px 8px #000;min-height:20px;}
+  #streakPop.on{opacity:1;transform:none;}
+  #streakLine{font-size:10px;letter-spacing:.22em;color:rgba(255,179,64,.78);margin-top:3px;
+    min-height:12px;font-weight:600;text-shadow:0 1px 6px #000;}
 
   /* damage direction */
   #dmgDirs{position:absolute;left:50%;top:50%;width:0;height:0;}
@@ -345,6 +358,8 @@
   <div id="top">
     <div id="timer" class="mono">10:00</div>
     <div id="objective"><b id="killCount">0</b> 已消灭</div>
+    <div id="streakPop"></div>
+    <div id="streakLine"></div>
   </div>
 
   <div id="respawn">
@@ -354,6 +369,7 @@
 
   <div id="feed"></div>
   <div id="comms"></div>
+  <div id="streakDock"></div>
 
   <div id="vitals">
     <div class="row"><span class="lbl">生命</span><span id="hpNum" class="mono">100</span></div>
@@ -413,10 +429,11 @@
       <div class="key"><kbd>CTRL</kbd> <span>蹲下</span></div>
       <div class="key"><kbd>R</kbd> <span>装填</span></div>
       <div class="key"><kbd>1–5 / 滚轮</kbd> <span>切换武器</span></div>
+      <div class="key"><kbd>6–0</kbd> <span>连杀奖励</span></div>
       <div class="key"><kbd>V</kbd> <span>射击模式</span></div>
       <div class="key"><kbd>ESC</kbd> <span>暂停</span></div>
     </div>
-    <div class="hint">悬停预览 · 点击出击 · 阵亡后 3 秒重新部署 · 3/5/7 连杀触发侦察机 / 空袭 / 电磁脉冲</div>
+    <div class="hint">悬停预览 · 点击出击 · 阵亡后 3 秒重新部署 · 连杀奖励就绪后按 6–0 释放</div>
   </div>
 </div>
 

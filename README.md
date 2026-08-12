@@ -54,6 +54,7 @@ will not play on a phone.
 | `Ctrl` | Crouch |
 | `Space` | Jump; tap again in the air to double jump; hold near a ledge to mantle |
 | `1` `2` `3` `4` `5` | M4 carbine / KS-12 pump / P-9 sidearm / SR-7 Longbow / SAW-250 LMG |
+| `6`–`0` | Fire readied killstreaks, in the order they were earned |
 | `V` | Toggle the rifle between full auto and semi |
 | Mouse wheel | Cycle weapons |
 | `Esc` | Pause |
@@ -76,10 +77,14 @@ The report screen shows eliminations, deaths, headshots and accuracy.
 
 You do not fight alone. Three squadmates — 磐石, 猎鹰, 流星 — hold a loose wedge off
 your shoulder, pick their own targets (and get picked: hostiles engage them too), and
-redeploy eight seconds after going down. Streaks reward staying alive: three kills
-lights a UAV that paints every hostile on the minimap for 25 seconds, five walks an
-airstrike onto the thickest enemy cluster, and seven fires an EMP that paralyses enemy
-fire for 12 seconds. Dying cashes the streak out.
+redeploy eight seconds after going down. Killstreaks are earned at 3, 5, 7, 8, 10 and
+12 consecutive kills and dock on the left of the HUD — yours to fire with `6`–`0`
+whenever the moment is right. The ladder: a UAV that paints every hostile on the
+minimap for 25s, an airstrike walked onto the thickest enemy cluster, an EMP that
+paralyses enemy fire for 12s, an attack helicopter strafing from its orbit for 40s,
+a gunship circling with explosive fire for 25s, and the juggernaut suit — 300 armour
+and small-arms resistance until you go down. Dying resets the count but keeps whatever
+you had already earned.
 
 ## Weapons
 
