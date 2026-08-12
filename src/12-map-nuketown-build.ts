@@ -1,3 +1,4 @@
+// @ts-nocheck -- procedural scene builder; tighten after shared builder overloads are typed.
 'use strict';
 /* -------------------------------------------------------------------------
    NUKETOWN assembly — the ground, the backdrop, and buildNuketown() itself.

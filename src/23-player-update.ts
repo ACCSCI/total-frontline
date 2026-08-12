@@ -139,7 +139,8 @@ function updatePlayer(dt) {
   /* ---- stance ---- */
   const wantCrouch = !!(keys['ControlLeft'] || keys['ControlRight'] || keys['KeyC']);
   const speedNow = Math.hypot(player.vel.x, player.vel.z);
-  const wantSprint = shiftDown && !wantCrouch && !player.ads && keys['KeyW'] && player.reloadT <= 0;
+  const wantSprint =
+    !G.jug && shiftDown && !wantCrouch && !player.ads && keys['KeyW'] && player.reloadT <= 0;
   if (!wantCrouch && player.crouch) {
     /* only stand if there's headroom */
     const ceil = ceilingAt(player.pos.x, player.pos.z, player.pos.y + CROUCH_H);
@@ -165,6 +166,7 @@ function updatePlayer(dt) {
   let maxSpeed = player.crouch ? CROUCH_SPEED : player.sprint ? SPRINT_SPEED : WALK_SPEED;
   if (player.reloadT > 0) maxSpeed *= 0.86;
   maxSpeed *= 1 - 0.4 * player.adsEase;
+  if (G.jug) maxSpeed *= 0.62;
 
   const accel = player.onGround ? ACCEL : AIR_ACCEL;
   if (wl > 0) {
@@ -197,7 +199,7 @@ function updatePlayer(dt) {
   if (player.onGround) player.jumpsLeft = 1; // the air hop
   let jumpedNow = false;
   if (keys['Space'] && player.onGround && !player.crouch) {
-    player.vel.y = JUMP_V;
+    player.vel.y = JUMP_V * (G.jug ? 0.72 : 1);
     player.onGround = false;
     player.jumpsLeft = 1;
     jumpedNow = true;
@@ -206,11 +208,11 @@ function updatePlayer(dt) {
   if (!jumpedNow && !player.onGround && player.mantleT <= 0) {
     /* holding space into a ledge climbs it; a fresh tap does too, so the
        double jump is only spent when there's nothing to grab */
-    if (keys['Space'] && player.vel.y < 2.6) {
+    if (!G.jug && keys['Space'] && player.vel.y < 2.6) {
       const led = findMantle();
       if (led) startMantle(led);
     }
-    if (player.mantleT <= 0 && spacePressed && player.jumpsLeft > 0) {
+    if (!G.jug && player.mantleT <= 0 && spacePressed && player.jumpsLeft > 0) {
       player.jumpsLeft--;
       player.vel.y = DOUBLE_JUMP_V;
       SFX.jumpSound();
@@ -293,9 +295,9 @@ function updatePlayer(dt) {
   player.bobAmp = damp(player.bobAmp, moving ? clamp(hSpeed / WALK_SPEED, 0, 1.5) : 0, 9, dt);
   if (moving) {
     const prev = player.stepPhase;
-    player.stepPhase += dt * hSpeed * (player.crouch ? 1.05 : 1.42);
+    player.stepPhase += dt * hSpeed * (G.jug ? 0.92 : player.crouch ? 1.05 : 1.42);
     if (Math.floor(prev / PI) !== Math.floor(player.stepPhase / PI)) {
-      const vol = player.crouch ? 0.35 : player.sprint ? 1.15 : 0.8;
+      const vol = G.jug ? 1.25 : player.crouch ? 0.35 : player.sprint ? 1.15 : 0.8;
       SFX.footstep(vol, clamp(Math.sin(player.stepPhase) * 0.35, -1, 1));
     }
   }
@@ -337,8 +339,9 @@ function updatePlayer(dt) {
   );
 
   /* ---- fov ---- */
-  const hipFov =
-    BASE_FOV + (player.sprint && hSpeed > 4.5 ? 7.5 : 0) + clamp(hSpeed - 5, 0, 3) * 0.6;
+  const hipFov = G.jug
+    ? 68
+    : BASE_FOV + (player.sprint && hSpeed > 4.5 ? 7.5 : 0) + clamp(hSpeed - 5, 0, 3) * 0.6;
   fovCur = damp(fovCur, hipFov, 7, dt);
   /* the ADS blend rides on top of the damped hipfire value so the 0.2s ramp
      is exact rather than doubly smoothed */
@@ -355,24 +358,11 @@ function updatePlayer(dt) {
     clamp(Math.tan((wpn.adsFov * PI) / 360) / Math.tan((BASE_FOV * PI) / 360), 0.18, 1),
     player.adsEase
   );
+  if (G.jug) sensScale *= 0.82;
 
   /* ---- weapon spread recovery ---- */
   const w = WEAPONS[player.weapon];
   w.spread = Math.max(w.spreadBase, w.spread - w.spreadRecover * dt);
-
-  /* ---- firing ---- */
-  player.fireCooldown -= dt;
-  /* let go of the trigger for a beat and the recoil pattern starts over */
-  player.burstIdle += dt;
-  if (player.burstIdle > 0.32) player.burstCount = 0;
-  player.clickBuf = Math.max(0, player.clickBuf - dt);
-  if (!player.dead && (player.triggerHeld || player.clickBuf > 0)) {
-    if (w.auto && !w.semi) {
-      if (fireWeapon()) player.clickBuf = 0;
-    } else if (player.triggerReleased) {
-      if (fireWeapon()) player.clickBuf = 0;
-    }
-  }
 
   /* ---- reload ---- */
   if (player.reloadT > 0) {
@@ -447,4 +437,18 @@ function updatePlayer(dt) {
       player.switching = 0;
     }
   }
+}
+
+/* Runs after updateViewmodel so a shot samples the muzzle pose that will be
+   rendered in this frame, rather than the previous frame's bob/sway pose. */
+function updatePlayerFiring(dt) {
+  const w = WEAPONS[player.weapon];
+  player.fireCooldown -= dt;
+  player.burstIdle += dt;
+  if (player.burstIdle > 0.32) player.burstCount = 0;
+  player.clickBuf = Math.max(0, player.clickBuf - dt);
+  if (player.dead || (!player.triggerHeld && player.clickBuf <= 0)) return;
+  if (w.auto && !w.semi) {
+    if (fireWeapon()) player.clickBuf = 0;
+  } else if (player.triggerReleased && fireWeapon()) player.clickBuf = 0;
 }

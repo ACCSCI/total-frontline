@@ -11,6 +11,8 @@ function clearEnemies() {
   enemies.length = 0;
 }
 function resetWorldState() {
+  if (G.gunship) endGunship('reset');
+  exitJuggernaut(false);
   for (const w of WEAPONS) {
     w.mag = w.magSize;
     w.res = w.reserve;
@@ -65,7 +67,9 @@ function resetWorldState() {
   UI._scopeK = -1;
   UI.scope.style.opacity = 0;
   compMat.uniforms.scope.value = 0;
+  compMat.uniforms.gunship.value = 0;
   UI.cross.classList.remove('hidden');
+  UI._crossHidden = false;
   crossSpread = 0;
   crossFireT = 0;
   crossShots = G.shots; // redeploy with the reticle already closed
@@ -109,10 +113,6 @@ function resetWorldState() {
     scene.remove(G.heli.obj);
     G.heli = null;
   }
-  if (G.gunship) {
-    scene.remove(G.gunship.obj);
-    G.gunship = null;
-  }
   updateStreakDock();
   G.headshots = 0;
   G.shots = 0;
@@ -136,6 +136,7 @@ function resetWorldState() {
 /* deathmatch redeploy: fresh body and loadout at the spawn, the scoreboard
    and the clock keep running. Two seconds of protection against spawn campers. */
 function respawnPlayer() {
+  exitJuggernaut(false);
   for (const w of WEAPONS) {
     w.mag = w.magSize;
     w.res = w.reserve;
@@ -198,8 +199,8 @@ function streakPop(text) {
   UI.streakPop.classList.remove('on');
   void UI.streakPop.offsetWidth;
   UI.streakPop.classList.add('on');
-  clearTimeout(streakPop._t);
-  streakPop._t = setTimeout(() => UI.streakPop.classList.remove('on'), 2600);
+  clearTimeout((streakPop as any)._t);
+  (streakPop as any)._t = setTimeout(() => UI.streakPop.classList.remove('on'), 2600);
 }
 function noteKillstreak() {
   G.streak++;
@@ -261,7 +262,7 @@ function callAirstrike() {
   G.airstrike = { x: best.x, z: best.z, t: 1.4, n: 3 };
 }
 const _blastDir = new THREE.Vector3();
-function explodeAt(x, z, killer) {
+function explodeAt(x, z, killer?) {
   killer = killer || '空袭';
   const gy = groundAt(x, z, 3);
   const y = gy === null ? 0 : gy;
@@ -338,7 +339,7 @@ function buildHeli() {
   part(tail, B(0.05, 0.25, 1.5), HELI_MAT, 0, 0, 0);
   g.add(tail);
   g.traverse((o) => {
-    if (o.isMesh) o.castShadow = true;
+    if (o instanceof THREE.Mesh) o.castShadow = true;
   });
   g.userData.rotor = rotor;
   g.userData.tail = tail;
@@ -363,7 +364,7 @@ function buildGunship() {
   }
   part(g, B(0.5, 0.5, 2.6), HELI_MAT, 0.95, -0.8, 1.0); // side gun pack
   g.traverse((o) => {
-    if (o.isMesh) o.castShadow = true;
+    if (o instanceof THREE.Mesh) o.castShadow = true;
   });
   g.userData.props = props;
   return g;
@@ -450,49 +451,6 @@ function updateHeli(dt) {
     }
   }
 }
-function callGunship() {
-  if (G.gunship) {
-    G.gunship.t = 25;
-  } else {
-    const obj = buildGunship();
-    scene.add(obj);
-    G.gunship = { obj, t: 25, ang: rand(0, 7), fireT: 1.5 };
-  }
-  comms(null, '空中炮艇已进入航线 — 火力覆盖开始', true);
-}
-function updateGunship(dt) {
-  const s = G.gunship;
-  s.t -= dt;
-  if (s.t <= 0) {
-    scene.remove(s.obj);
-    G.gunship = null;
-    return;
-  }
-  s.ang += dt * 0.22;
-  s.obj.position.set(Math.cos(s.ang) * 26, 19, Math.sin(s.ang) * 26);
-  s.obj.rotation.set(0, PI - s.ang, 0.1);
-  for (const pr of s.obj.userData.props) pr.rotation.z += dt * 40;
-  s.fireT -= dt;
-  if (s.fireT <= 0) {
-    const e = skyTarget(s.obj.position, 60, 8);
-    if (e) {
-      const x = e.obj.position.x,
-        z = e.obj.position.z;
-      spawnTracer(s.obj.position, _skyEnd.set(x, e.obj.position.y + 1, z), 0xfff3c8, 2.2);
-      explodeAt(x, z, '空中炮艇');
-      s.fireT = rand(1.0, 1.6);
-    } else s.fireT = 0.5;
-  }
-}
-/* juggernaut: 300 armour and small-arms resistance until you go down */
-function goJuggernaut() {
-  G.jug = true;
-  player.armorMax = 300;
-  player.armor = 300;
-  player.hp = 100;
-  updateVitalsUI();
-  comms(null, '无畏战士装甲已着装 — 正面推平他们', true);
-}
 function startGame() {
   resetWorldState();
   spawnAllies();
@@ -524,6 +482,8 @@ function showMenu() {
 }
 function endGame(win) {
   if (G.over) return;
+  if (G.gunship) endGunship('round-end');
+  if (G.jug) exitJuggernaut(false);
   G.over = true;
   G.running = false;
   G.started = false;
@@ -535,6 +495,7 @@ function endGame(win) {
   UI.scope.style.opacity = 0;
   compMat.uniforms.scope.value = 0;
   UI.cross.classList.remove('hidden');
+  UI._crossHidden = false;
   vmRoot.visible = true;
   UI.hud.classList.remove('on');
   UI.pause.classList.remove('on');
@@ -572,9 +533,9 @@ function onResize() {
 addEventListener('resize', onResize);
 /* now that the post chain and particle pools exist, let target reallocation
    (resize or a dynamic-resolution step) keep their uniforms in sync */
-allocTargets.onResize = () => {
+(allocTargets as any).onResize = () => {
   compMat.uniforms.res.value.set(RTW, RTH);
   PS_SPARK.pts.material.uniforms.hscale.value = RTH * 0.5;
   PS_SOFT.pts.material.uniforms.hscale.value = RTH * 0.5;
 };
-allocTargets.onResize();
+(allocTargets as any).onResize();

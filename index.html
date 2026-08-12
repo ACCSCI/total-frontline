@@ -207,6 +207,55 @@
   #streakLine{font-size:10px;letter-spacing:.22em;color:rgba(255,179,64,.78);margin-top:3px;
     min-height:12px;font-weight:600;text-shadow:0 1px 6px #000;}
 
+  /* player-controlled gunship fire-control display */
+  #gunshipHud{position:absolute;inset:0;display:none;color:#e8f1e7;font-family:ui-monospace,Consolas,monospace;
+    text-shadow:0 0 5px #000;background:repeating-linear-gradient(0deg,rgba(220,245,220,.018) 0 1px,transparent 1px 4px);}
+  #hud.gunship #gunshipHud{display:block;}
+  #hud.gunship > :not(#gunshipHud):not(#hitmark):not(#feed){display:none;}
+  #gunshipHud .ghTop{position:absolute;left:28px;right:300px;top:24px;display:flex;justify-content:space-between;
+    font-size:13px;letter-spacing:.18em;border-top:1px solid rgba(220,245,220,.65);padding-top:7px;}
+  #gunshipHud .ghRet{position:absolute;left:50%;top:50%;width:72px;height:72px;transform:translate(-50%,-50%);
+    border:1px solid rgba(220,245,220,.82);border-radius:50%;}
+  #gunshipHud .ghRet::before,#gunshipHud .ghRet::after{content:"";position:absolute;background:#e8f1e7;}
+  #gunshipHud .ghRet::before{left:-26px;right:-26px;top:35px;height:1px;}
+  #gunshipHud .ghRet::after{top:-26px;bottom:-26px;left:35px;width:1px;}
+  #gunshipTargets{position:absolute;inset:0;overflow:hidden;pointer-events:none;}
+  .ghTarget{position:absolute;display:none;box-sizing:border-box;border:2px solid #ff3028;
+    transform:translate(-50%,-50%);filter:drop-shadow(0 0 3px rgba(255,20,12,.95));}
+  .ghTarget > span{position:absolute;left:-2px;bottom:100%;padding:1px 4px;background:rgba(45,0,0,.72);
+    color:#ff5a4f;font-size:8px;font-weight:800;letter-spacing:.16em;white-space:nowrap;}
+  .ghTarget.occluded{border-style:dashed;}
+  .ghTarget.occluded::before,.ghTarget.occluded::after{content:"";position:absolute;left:50%;top:50%;
+    width:125%;height:2px;background:#ff3028;box-shadow:0 0 4px #c00;transform-origin:center;}
+  .ghTarget.occluded::before{transform:translate(-50%,-50%) rotate(45deg);}
+  .ghTarget.occluded::after{transform:translate(-50%,-50%) rotate(-45deg);}
+  .ghTarget.occluded > span::after{content:" // 建筑遮挡";}
+  #gunshipHud .ghWeapons{position:absolute;right:28px;bottom:28px;width:240px;display:grid;gap:5px;}
+  .ghWeapon{padding:7px 10px;border-left:2px solid rgba(220,245,220,.28);background:rgba(5,12,7,.45);
+    display:flex;justify-content:space-between;font-size:11px;letter-spacing:.12em;}
+  .ghWeapon.on{border-color:#fff;background:rgba(210,235,210,.16);}
+  #gunshipHint{position:absolute;left:28px;bottom:28px;font-size:10px;letter-spacing:.15em;opacity:.72;line-height:1.8;}
+
+  /* heavy helmet aperture and suit state */
+  #jugFrame{position:absolute;inset:0;display:none;pointer-events:none;box-shadow:inset 0 0 12vmin 3vmin rgba(0,0,0,.9),
+    inset 0 8vmin 7vmin -5vmin rgba(20,25,26,.9),inset 0 -7vmin 6vmin -5vmin rgba(20,25,26,.85);}
+  #hud.jug #jugFrame{display:block;}
+  #jugTag{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);font-size:10px;letter-spacing:.25em;
+    color:#d9c99a;background:rgba(10,12,12,.7);border-top:1px solid rgba(217,201,154,.45);padding:6px 18px;}
+  #jugStatus{position:absolute;left:50%;top:25px;transform:translateX(-50%);font:800 10px ui-monospace,Consolas,monospace;
+    letter-spacing:.24em;color:#d9c99a;text-shadow:0 1px 5px #000;}
+  #jugDamage{position:absolute;inset:0;width:100%;height:100%;overflow:visible;}
+  #jugDamage .crack{fill:none;stroke:#d9e0d7;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;
+    opacity:0;filter:drop-shadow(0 0 2px rgba(255,255,255,.75));transition:opacity .16s ease-out;}
+  #jugFrame.damage1 .crack1{opacity:.55;}
+  #jugFrame.damage2 .crack1{opacity:.78;}
+  #jugFrame.damage2 .crack2{opacity:.62;}
+  #jugFrame.damage3 .crack{opacity:.9;stroke:#ffd5ce;}
+  #jugFrame.damage3{box-shadow:inset 0 0 12vmin 3vmin rgba(20,0,0,.94),
+    inset 0 8vmin 7vmin -5vmin rgba(35,8,6,.95),inset 0 -7vmin 6vmin -5vmin rgba(35,8,6,.9);}
+  #hud.jug #slots{display:none;}
+  #hud.jug #apFill{background:linear-gradient(180deg,#e1d4aa,#807452);}
+
   /* damage direction */
   #dmgDirs{position:absolute;left:50%;top:50%;width:0;height:0;}
   .dmgArc{position:absolute;left:-160px;top:-160px;width:320px;height:320px;opacity:0;}
@@ -332,6 +381,27 @@
 <div id="hud">
   <div id="lowhp"></div>
   <div id="edgeGlow"></div>
+  <div id="jugFrame">
+    <div id="jugStatus">装甲完整</div>
+    <svg id="jugDamage" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
+      <g class="crack crack1"><path d="M28 50l74 62-28 46 66 55-34 44 64 64m-68-169 57-13 42-48m-65 124 54 8 29 47M965 78l-63 54 25 50-62 42 31 53-58 72m65-217-54-17-37-52m58 163-52 5-35 45"/></g>
+      <g class="crack crack2"><path d="M13 382l91-18 32 48 71-18 21 52 90 14m-182-48-45 69-65 21m771-86 84-22 30 47 69-29m-99 29-35 72-66 19M451 12l28 67-21 38 43 50-27 52m5-140 62 23 31-19"/></g>
+      <g class="crack crack3"><path d="M346 594l31-91 55-13 15-75 60-22 12-87m-87 184-39-47-63-9m189-41 54 41 64-11M608 18l-26 75 38 36-39 68 30 51m-29-155-55-23-38 24"/></g>
+    </svg>
+    <div id="jugTag">无畏战士 // JUG-M134 加特林</div>
+  </div>
+
+  <div id="gunshipHud">
+    <div class="ghTop"><span>空中炮艇 // 火控系统</span><span id="gunshipTime">25.0 秒</span></div>
+    <div id="gunshipTargets" aria-hidden="true"></div>
+    <div class="ghRet"></div>
+    <div class="ghWeapons">
+      <div class="ghWeapon on" data-gun="0"><span>1　25 毫米机炮</span><b>就绪</b></div>
+      <div class="ghWeapon" data-gun="1"><span>2　40 毫米机炮</span><b>就绪</b></div>
+      <div class="ghWeapon" data-gun="2"><span>3　105 毫米榴弹炮</span><b>就绪</b></div>
+    </div>
+    <div id="gunshipHint">移动鼠标　调整准星<br>鼠标左键　开火<br>1 / 2 / 3　切换武器</div>
+  </div>
 
   <canvas id="cross"></canvas>
   <div id="hitmark"><i></i><i></i><i></i><i></i></div>
@@ -458,34 +528,7 @@
 <div id="err"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="js/00-core.js"></script>
-<script src="js/01-audio.js"></script>
-<script src="js/01b-audio-weapons.js"></script>
-<script src="js/02-renderer.js"></script>
-<script src="js/03-textures.js"></script>
-<script src="js/04-sky.js"></script>
-<script src="js/05-map-yard-a.js"></script>
-<script src="js/06-map-yard-b.js"></script>
-<script src="js/07-map-yard-c.js"></script>
-<script src="js/08-map-yard-clutter.js"></script>
-<script src="js/09-map-skyline.js"></script>
-<script src="js/10-map-registry.js"></script>
-<script src="js/11-map-nuketown.js"></script>
-<script src="js/12-map-nuketown-build.js"></script>
-<script src="js/13-map-apply.js"></script>
-<script src="js/14-fx.js"></script>
-<script src="js/15-viewmodels.js"></script>
-<script src="js/16-viewmodels-b.js"></script>
-<script src="js/17-weapons.js"></script>
-<script src="js/18-enemies.js"></script>
-<script src="js/19-player-hud.js"></script>
-<script src="js/20-input-shooting.js"></script>
-<script src="js/21-ai-a.js"></script>
-<script src="js/22-ai-b.js"></script>
-<script src="js/23-player-update.js"></script>
-<script src="js/24-vm-anim.js"></script>
-<script src="js/25-flow.js"></script>
-<script src="js/26-main.js"></script>
+<script src="js/game.js"></script>
 
 </body>
 </html>

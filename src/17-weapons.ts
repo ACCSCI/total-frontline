@@ -2,7 +2,9 @@
 /* =========================================================================
    9. WEAPON DEFINITIONS
    ========================================================================= */
-const WEAPONS = [
+const NORMAL_WEAPON_COUNT = 5;
+const JUG_WEAPON = 5;
+const WEAPONS: any[] = [
   {
     id: 'rifle',
     name: 'M4 卡宾枪',
@@ -206,6 +208,48 @@ const WEAPONS = [
     shellBig: false,
     build: buildLMG,
   },
+  {
+    id: 'jug_gatling',
+    name: 'JUG-M134 加特林',
+    sound: 'lmg',
+    jugOnly: true,
+    heavy: true,
+    infiniteAmmo: true,
+    magSize: 150,
+    reserve: 300,
+    maxReserve: 300,
+    damage: 36,
+    headMult: 1.5,
+    rpm: 900,
+    auto: true,
+    semiToggle: false,
+    pellets: 1,
+    spreadBase: 0.012,
+    spreadMax: 0.07,
+    spreadShot: 0.0035,
+    spreadRecover: 0.04,
+    moveSpread: 0.012,
+    airSpread: 0.02,
+    crouchMult: 0.7,
+    recoilKick: 0.052,
+    recoilRot: 0.072,
+    camPitch: 0.013,
+    camYaw: 0.006,
+    fovKick: 0.45,
+    reloadTime: 6.2,
+    drawTime: 1.15,
+    shakeAmt: 0.28,
+    range: 165,
+    falloffStart: 55,
+    falloffRange: 80,
+    falloffMin: 0.58,
+    adsFov: 58,
+    adsSpread: 0.55,
+    adsTime: 0.42,
+    noise: 52,
+    shellBig: true,
+    build: buildJugGatling,
+  },
 ];
 
 /* build all viewmodels once, keep them parented under the animation rig */
@@ -243,4 +287,5 @@ const WICONS = [
   `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M26 5h30v6H44l-2 3h-6l-3 8h-6l3-8h-4z" fill="#dfe6ec" opacity=".85"/></svg>`,
   `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 9h34l4-3h10v3h20v3H48l-2 3h-8l-3 6h-5l2-6H2z" fill="#dfe6ec" opacity=".85"/><rect x="22" y="2" width="22" height="4" rx="2" fill="#dfe6ec" opacity=".85"/><rect x="26" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/><rect x="37" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/></svg>`,
   `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 7h36l4-3h8v3h20v5H46l-2 3H32l-2-3h-8l-3 8h-5l2-8H2z" fill="#dfe6ec" opacity=".85"/><rect x="12" y="12" width="12" height="6" rx="1" fill="#dfe6ec" opacity=".85"/><rect x="52" y="12" width="4" height="5" fill="#dfe6ec" opacity=".6"/></svg>`,
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M1 6h39l5-4h9v4h17v6H46l-3 4H29l-3-4H18l-4 8H8l3-8H1z" fill="#d9c99a"/><rect x="8" y="12" width="19" height="8" rx="1" fill="#807452"/><rect x="53" y="12" width="7" height="5" fill="#d9c99a"/></svg>`,
 ];

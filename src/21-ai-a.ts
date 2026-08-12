@@ -21,7 +21,7 @@ function targetChest(e, out) {
   if (t) return out.set(t.obj.position.x, t.obj.position.y + 1.1, t.obj.position.z);
   return playerChest(out);
 }
-function hasLOS(e, tp) {
+function hasLOS(e, tp?) {
   enemyEye(e, _eEye);
   /* tp lets the same test look at a squadmate; default is the player's chest */
   if (tp) _ePos.copy(tp);
@@ -70,7 +70,7 @@ function muzzleClear(e) {
   return losRay.intersectObjects(worldSolid, false).length === 0;
 }
 
-function enemyShoot(e, atPoint) {
+function enemyShoot(e, atPoint?) {
   enemyEye(e, _eEye);
   const muzzle = _eEye.clone();
   e.p.gunMuzzle.getWorldPosition(muzzle);
@@ -230,8 +230,8 @@ function pickCover(e, tx, tz) {
    Squad comms. Text callouts with a radio blip. Costs nothing and does more
    for "these things are co-ordinating" than any amount of steering code.
    ------------------------------------------------------------------------- */
-const COMMS_COOLDOWN = {};
-function comms(e, text, priority) {
+const COMMS_COOLDOWN: { last?: number } = {};
+function comms(e, text, priority?) {
   if (!G.running || G.over) return;
   const now = perfNow;
   if (!priority && COMMS_COOLDOWN.last && now - COMMS_COOLDOWN.last < 1700) return;
@@ -341,7 +341,7 @@ function allyLOS(a, tp) {
 function makeAlly(i) {
   const parts = buildEnemyModel();
   parts.model.traverse((o) => {
-    if (o.isMesh && o.material === E_MAT.accent) o.material = ALLY_ACCENT;
+    if (o instanceof THREE.Mesh && o.material === E_MAT.accent) o.material = ALLY_ACCENT;
   });
   const obj = new THREE.Group();
   obj.add(parts.model);

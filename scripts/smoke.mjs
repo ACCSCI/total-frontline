@@ -113,6 +113,73 @@ console.log('game:', JSON.stringify(game));
 check(game.started && game.hud && game.menuHidden, 'deploying from the menu starts a round');
 check(game.time > 595 && game.time <= 600, 'deathmatch runs ten minutes');
 check(game.spawn.x === -24 && game.spawn.z === -6, 'player spawns behind the west house');
+
+const muzzleAlignment = await page.evaluate(() => {
+  const originalWeapon = player.weapon;
+  const originalAds = player.adsEase;
+  let maxError = 0;
+  for (let weapon = 0; weapon < WEAPONS.length; weapon++) {
+    player.weapon = weapon;
+    for (const ads of [0, 1]) {
+      player.adsEase = ads;
+      updateViewmodel(0, 0, 0);
+      camera.getWorldDirection(_fwd);
+      placeWorldMuzzleFromViewmodel(WEAPONS[weapon].vm.muzzle);
+      const viewNdc = WEAPONS[weapon].vm.muzzle
+        .getWorldPosition(new THREE.Vector3())
+        .project(vmCamera);
+      const worldNdc = _muzzleWorld.clone().project(camera);
+      maxError = Math.max(
+        maxError,
+        Math.abs(viewNdc.x - worldNdc.x),
+        Math.abs(viewNdc.y - worldNdc.y)
+      );
+    }
+  }
+  player.weapon = originalWeapon;
+  player.adsEase = originalAds;
+  updateViewmodel(0, 0, 0);
+  return maxError;
+});
+check(muzzleAlignment < 1e-5, 'tracers align with every weapon muzzle in hip-fire and ADS');
+
+const recoilDirection = await page.evaluate(() => {
+  const saved = { ...vmRec };
+  for (const key of Object.keys(vmRec)) vmRec[key] = 0;
+  vmKick(WEAPONS[0]);
+  updateViewmodel(1 / 120, 0, 0);
+  const muzzleRise = vmRecoil.rotation.x;
+  Object.assign(vmRec, saved);
+  updateViewmodel(0, 0, 0);
+  return muzzleRise;
+});
+check(recoilDirection > 0, 'viewmodel muzzle rises with camera recoil');
+
+const tracerMotion = await page.evaluate(() => {
+  spawnTracer(new THREE.Vector3(0, 2, 0), new THREE.Vector3(0, 2, -80), 0xffcf7a, 1);
+  const tr = TRACERS[(tracerHead - 1 + TRACERS.length) % TRACERS.length];
+  const z0 = tr.mesh.position.z;
+  updateTracers(0.016); // preserves the muzzle-attached first frame
+  updateTracers(0.016);
+  return { moved: tr.mesh.position.z < z0, segment: tr.mesh.scale.z, full: tr.length };
+});
+check(
+  tracerMotion.moved && tracerMotion.segment < tracerMotion.full,
+  'tracer is a moving short streak'
+);
+
+const adsCrosshair = await page.evaluate(() => {
+  player.adsEase = 0.5;
+  updateCrosshair(0);
+  const hidden = document.getElementById('cross').classList.contains('hidden');
+  player.adsEase = 0;
+  updateCrosshair(0);
+  return { hidden, restored: !document.getElementById('cross').classList.contains('hidden') };
+});
+check(
+  adsCrosshair.hidden && adsCrosshair.restored,
+  'ADS hides the hip-fire crosshair and restores it'
+);
 await page.screenshot({ path: '_smoke-ingame-nuke.png' });
 
 /* deathmatch: death is a respawn, not the end of the round — and it cashes
@@ -227,11 +294,82 @@ const streaks = await page.evaluate(() => {
   G.streak = 9;
   kill();
   activateStreak(0);
-  out.gunship = !!G.gunship;
+  out.gunship = !!G.gunship?.controlled;
+  out.gunshipHud =
+    document.getElementById('hud').classList.contains('gunship') &&
+    !vmRoot.visible &&
+    compMat.uniforms.gunship.value === 1;
+  const aimBefore = G.gunship.aim.clone();
+  selectGunshipWeapon(2);
+  updateGunship(0, 0, 0);
+  const screenUpGround = _gunshipPlanar.clone();
+  updateGunship(0, 0, -40);
+  out.gunshipVertical = G.gunship.aim.clone().sub(aimBefore).dot(screenUpGround) > 0;
+  updateGunship(0.016, 80, 0);
+  out.gunshipControl =
+    G.gunship.weapon === 2 &&
+    G.gunship.aim.distanceToSquared(aimBefore) > 0.01 &&
+    camera.position.y > 40;
+  const visibleTarget = UI.gunshipTargetEls.findIndex((el) => el.style.display === 'block');
+  out.gunshipThermal = visibleTarget >= 0 && E_MAT.cloth.emissiveIntensity > 1;
+  if (visibleTarget >= 0) {
+    const e = enemies[visibleTarget];
+    const target = e.obj.position.clone().add(new THREE.Vector3(0, 1, 0));
+    const blocker = new THREE.Mesh(
+      new THREE.BoxGeometry(3, 3, 3),
+      new THREE.MeshBasicMaterial({ color: 0x111111 })
+    );
+    blocker.position.copy(camera.position).lerp(target, 0.5);
+    scene.add(blocker);
+    worldSolid.push(blocker);
+    blocker.updateMatrixWorld(true);
+    updateGunship(0, 0, 0);
+    out.gunshipOccluded = UI.gunshipTargetEls[visibleTarget].classList.contains('occluded');
+    worldSolid.splice(worldSolid.indexOf(blocker), 1);
+    scene.remove(blocker);
+    blocker.geometry.dispose();
+    blocker.material.dispose();
+  }
+  G.gunship.trigger = true;
+  updateGunship(0.016, 0, 0);
+  out.gunshipFire = G.gunship.cooldowns[2] > 3;
+  G.gunship.trigger = false;
   G.streak = 11;
   kill();
   activateStreak(0);
-  out.jug = G.jug === true && player.armor === 300 && player.armorMax === 300;
+  out.jug =
+    G.jug === true &&
+    player.armor === 300 &&
+    player.armorMax === 300 &&
+    WEAPONS[player.weapon].id === 'jug_gatling' &&
+    !!WEAPONS[player.weapon].vm.barrels &&
+    document.getElementById('hud').classList.contains('jug');
+  out.gunshipExit =
+    !G.gunship &&
+    !document.getElementById('hud').classList.contains('gunship') &&
+    compMat.uniforms.gunship.value === 0;
+  switchWeapon(4);
+  out.jugLocked = player.weapon === JUG_WEAPON;
+  const jugWeapon = WEAPONS[JUG_WEAPON];
+  jugWeapon.mag = 1;
+  player.switching = player.fireCooldown = 0;
+  fireWeapon();
+  updateAmmoUI();
+  startReload();
+  out.jugInfinite =
+    jugWeapon.mag === 1 &&
+    player.reloadT === 0 &&
+    document.getElementById('magNum').textContent === '∞';
+  player.triggerHeld = true;
+  const spinBefore = WEAPONS[JUG_WEAPON].vm.barrels.rotation.z;
+  updateViewmodel(0.1, 0, 0);
+  out.gatlingSpin = WEAPONS[JUG_WEAPON].vm.barrels.rotation.z !== spinBefore;
+  player.triggerHeld = false;
+  damagePlayer(100, new THREE.Vector3(0, 1, 0));
+  out.jugArmor = player.hp === 100 && player.armor === 200;
+  out.jugCracks =
+    document.getElementById('jugFrame').classList.contains('damage1') &&
+    document.getElementById('jugStatus').textContent.includes('受损');
   return out;
 });
 check(streaks.earned === 'uav' && streaks.dock === 1, '3 kills: UAV readied on the left dock');
@@ -240,11 +378,28 @@ check(streaks.uav, 'activating the UAV starts the sweep');
 check(streaks.airstrike, '5 kills: airstrike callable');
 check(streaks.emp, '7 kills: EMP paralyses enemy fire');
 check(streaks.heli, '8 kills: attack helo on station');
-check(streaks.gunship, '10 kills: gunship in its orbit');
-check(streaks.jug, '12 kills: juggernaut armour suits up');
+check(
+  streaks.gunship && streaks.gunshipHud,
+  '10 kills: player enters the gunship fire-control view'
+);
+check(streaks.gunshipControl, 'gunship mouse aim and 1/2/3 weapon selection work');
+check(streaks.gunshipVertical, 'gunship mouse-up input moves the reticle upward');
+check(streaks.gunshipThermal, 'gunship thermal view highlights visible enemies with red boxes');
+check(streaks.gunshipOccluded, 'building-obscured gunship targets receive a red X');
+check(streaks.gunshipFire, 'gunship 105 mm cannon fires and enters cooldown');
+check(streaks.jug && streaks.jugLocked, '12 kills: juggernaut equips a locked Gatling loadout');
+check(streaks.jugInfinite, 'Juggernaut Gatling has unlimited ammunition and cannot reload');
+check(streaks.gatlingSpin, 'Juggernaut Gatling barrels spin under fire');
+check(streaks.jugArmor, 'Juggernaut armour absorbs damage before health');
+check(streaks.jugCracks, 'Juggernaut visor cracks and status reflect armour damage');
+check(streaks.gunshipExit, 'entering Juggernaut restores the first-person HUD from gunship mode');
+await page.screenshot({ path: '_smoke-juggernaut.png' });
 
 /* the LMG: slot 5 switches in and shows up on the HUD in Chinese */
-await page.evaluate(() => switchWeapon(4));
+await page.evaluate(() => {
+  exitJuggernaut(true);
+  switchWeapon(4);
+});
 await new Promise((r) => setTimeout(r, 1300));
 const lmg = await page.evaluate(() => ({
   id: WEAPONS[player.weapon].id,
@@ -254,6 +409,26 @@ const lmg = await page.evaluate(() => ({
 }));
 check(lmg.id === 'lmg' && lmg.name === 'SAW-250 机枪', 'slot 5 is the SAW-250 LMG');
 check(lmg.mode === '全自动' && lmg.slots === 5, 'HUD weapon mode is Chinese, five slots listed');
+
+await page.evaluate(() => {
+  callGunship();
+  updateGunship(0.016, 0, 0);
+});
+await page.screenshot({ path: '_smoke-gunship.png' });
+const gunshipExpiry = await page.evaluate(() => {
+  G.gunship.t = 0.001;
+  updateGunship(0.016, 0, 0);
+  return {
+    ended: !G.gunship,
+    hud: !document.getElementById('hud').classList.contains('gunship'),
+    filter: compMat.uniforms.gunship.value,
+    vm: vmRoot.visible,
+  };
+});
+check(
+  gunshipExpiry.ended && gunshipExpiry.hud && gunshipExpiry.filter === 0 && gunshipExpiry.vm,
+  'gunship expiry restores camera, HUD, filter and viewmodel'
+);
 
 /* respawns honour the sides: wipe the squad, everyone comes back east.
    Gun platforms come off station first and the AI is frozen for the wait, so

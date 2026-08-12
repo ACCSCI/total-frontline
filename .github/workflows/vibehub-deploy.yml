@@ -19,10 +19,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Agent: replace this block after detecting the repository's package manager and build script.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
       - name: Build static site
-        run: |
-          node scripts/build.mjs
+        run: bun run build
 
       - name: Install verified VibeHub CLI
         if: github.event_name == 'push'

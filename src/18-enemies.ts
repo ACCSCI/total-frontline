@@ -1,3 +1,4 @@
+// @ts-nocheck -- procedural character rig builder; domain objects are typed at gameplay boundaries.
 'use strict';
 /* =========================================================================
    10. ENEMIES
