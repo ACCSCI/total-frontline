@@ -1,6 +1,6 @@
 'use strict';
 /* =========================================================================
-   OPERATION IRONHOLD — single-file FPS
+   TOTAL FRONTLINE — single-file FPS
    three.js r128 (no addons available: composer / capsule / merge utils
    are all implemented by hand below)
    ========================================================================= */

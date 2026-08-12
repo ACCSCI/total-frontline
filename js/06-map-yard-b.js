@@ -252,7 +252,7 @@
     sx2.font = 'bold 118px "Arial Narrow", Arial, sans-serif';
     sx2.textAlign = 'center';
     sx2.textBaseline = 'middle';
-    sx2.fillText('IRONHOLD', SW / 2, 84);
+    sx2.fillText('TOTAL FRONTLINE', SW / 2, 84);
     sx2.font = 'bold 52px "Arial Narrow", Arial, sans-serif';
     sx2.fillStyle = 'rgba(206,166,60,0.85)';
     sx2.fillText('LOGISTICS   ·   TERMINAL 7', SW / 2, 168);

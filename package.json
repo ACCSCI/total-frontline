@@ -1,9 +1,10 @@
 {
-  "name": "operation-ironhold",
+  "name": "total-frontline",
   "version": "0.2.0",
   "private": true,
   "description": "A first-person shooter that runs in a browser tab. No build step for the game itself; dev tooling only.",
   "scripts": {
+    "build": "bun scripts/build.mjs",
     "check:lines": "bun scripts/check-file-lines.mjs",
     "check": "biome check . && bun scripts/check-file-lines.mjs",
     "format": "biome format --write .",

@@ -37,7 +37,7 @@ function applyMap(rec) {
   walkable.reset();
   $('mapMode').textContent = rec.tag;
   $('endSub').textContent = rec.sub;
-  document.title = '铁腕行动 — ' + rec.title;
+  document.title = '全面战线 — ' + rec.title;
   clearEnemies();
   spawnEnemies();
   clearAllies();
