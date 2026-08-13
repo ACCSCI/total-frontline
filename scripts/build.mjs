@@ -18,7 +18,7 @@ for (const file of ['index.html', 'cover-total-frontline.png']) {
   await cp(new URL(`../${file}`, import.meta.url), new URL(file, output));
 }
 
-for (const directory of ['screenshots']) {
+for (const directory of ['screenshots', 'assets']) {
   await cp(new URL(`../${directory}/`, import.meta.url), new URL(`${directory}/`, output), {
     recursive: true,
   });

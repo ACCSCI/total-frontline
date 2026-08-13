@@ -325,7 +325,7 @@ function updateShells(dt) {
         s.v.z *= 0.62;
         s.av.multiplyScalar(0.55);
         const pan = clamp((s.mesh.position.x - camera.position.x) / 12, -1, 1);
-        SFX.shellDrop(pan);
+        SFX.shellDrop(pan, s.big);
       }
     }
   }

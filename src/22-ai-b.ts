@@ -1,4 +1,8 @@
 'use strict';
+const _enemyToTarget = new THREE.Vector3(),
+  _enemyPlanarFwd = new THREE.Vector3(),
+  _enemyPlanarSide = new THREE.Vector3();
+
 function updateEnemy(e, dt) {
   const obj = e.obj,
     p = e.p;
@@ -55,7 +59,9 @@ function updateEnemy(e, dt) {
   /* ---------- perception ---------- */
   e.losTimer -= dt;
   if (e.losTimer <= 0) {
-    e.losTimer = 0.13 + Math.random() * 0.06;
+    /* Perception remains quicker than the explicit 0.3–0.8s reaction delay,
+       but static-scene raycasts no longer run six-to-eight times a second. */
+    e.losTimer = 0.2 + Math.random() * 0.06;
     const see = !player.dead && hasLOS(e);
     /* no eyes on the player — a squadmate in the open is just as valid a
        target, and the nearest one wins */
@@ -94,7 +100,7 @@ function updateEnemy(e, dt) {
   if (e.flinch > 0) e.flinch = Math.max(0, e.flinch - dt * 3.2);
 
   targetChest(e, _ePos);
-  const toP = _ePos.clone().sub(obj.position);
+  const toP = _enemyToTarget.copy(_ePos).sub(obj.position);
   const distToP = toP.length();
   let desiredX = 0,
     desiredZ = 0,
@@ -163,8 +169,8 @@ function updateEnemy(e, dt) {
         e.strafeT = rand(0.7, 1.9);
         if (Math.random() < 0.55) e.strafeDir *= -1;
       }
-      const fwd = new THREE.Vector3(toP.x, 0, toP.z).normalize();
-      const side = new THREE.Vector3(-fwd.z, 0, fwd.x).multiplyScalar(e.strafeDir);
+      const fwd = _enemyPlanarFwd.set(toP.x, 0, toP.z).normalize();
+      const side = _enemyPlanarSide.set(-fwd.z, 0, fwd.x).multiplyScalar(e.strafeDir);
 
       if (e.tactic === 'hold' || e.reloadT > 0) {
         if (!e.cover) e.cover = pickCover(e, _ePos.x, _ePos.z);
@@ -491,8 +497,8 @@ function updateEnemy(e, dt) {
     /* the sprite lives in world space, so a narrowed FOV magnifies it along
        with everything else — at 15x a nameplate covers the man wearing it.
        Cancelling the zoom keeps it the same size on screen at any aim state. */
-    const s = clamp(dCam * 0.055, 0.85, 2.4) * (camera.fov / BASE_FOV);
-    e.tag.sprite.scale.set(1.55 * s, 0.46 * s, 1);
-    e.tag.sprite.position.y = 2.16;
+    const s = clamp(dCam * 0.045, 0.55, 1.9) * (camera.fov / BASE_FOV);
+    e.tag.sprite.scale.set(1.75 * s, 0.52 * s, 1);
+    e.tag.sprite.position.y = 2.22;
   }
 }

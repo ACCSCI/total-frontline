@@ -84,7 +84,7 @@ function frame(now) {
         else respawnEnemy(dead);
       }
     }
-    if (player.dead && G.respawnT > 0) {
+    if (player.dead && G.respawnT > 0 && !G.gunship?.controlled) {
       G.respawnT -= dt;
       UI.respawnNum.textContent = Math.max(1, Math.ceil(G.respawnT));
       if (G.respawnT <= 0) {
@@ -114,6 +114,10 @@ function frame(now) {
   skyUniforms.uTime.value = now * 0.001;
   updateSunShafts();
   if ((!G.running || G.over) && !G.gunship?.controlled) updateViewmodel(dt, mdx, mdy);
+  /* Detached rifle magazines are scene-independent microphysics. They keep
+     moving while the weapon is holstered, the player is dead, or a gunship
+     camera temporarily owns the view. */
+  updateDetachedMagazinePhysics(dt);
   updateShells(dt);
   updateTracers(dt);
   updateEnemyFlashes(dt);
@@ -174,9 +178,12 @@ function frame(now) {
   compMat.uniforms.ab.value = 0.18;
 
   /* ---------------- render ---------------- */
-  renderer.setRenderTarget(sceneRT);
+  renderActivePrism();
+  renderer.setRenderTarget(worldRT);
   renderer.clear(true, true, true);
   renderer.render(scene, camera);
+  copyMat.uniforms.tDiffuse.value = worldRT.texture;
+  blit(copyMat, sceneRT);
   if (G.started && !G.gunship?.controlled) {
     /* viewmodel stays hidden on the menus */
     renderer.clearDepth();

@@ -68,7 +68,10 @@
   };
   /* every clutter material is vertex-coloured so merged props still vary:
      one flat tint across forty crates is what makes filler look procedural */
-  for (const k in MC) MC[k].vertexColors = true;
+  for (const k in MC) {
+    MC[k].vertexColors = true;
+    MC[k].userData.surfaceKey = k;
+  }
   const bucket = new Map(); // material -> geometry list
   const V = new THREE.Vector3(),
     Q = new THREE.Quaternion(),
@@ -95,6 +98,8 @@
   const BOX = new THREE.BoxGeometry(1, 1, 1);
   const CYL = new THREE.CylinderGeometry(1, 1, 1, 10);
   const CYL16 = new THREE.CylinderGeometry(1, 1, 1, 16);
+  const WHEEL_X = CYL.clone();
+  WHEEL_X.rotateZ(PI / 2);
   const TOR = new THREE.TorusGeometry(1, 0.34, 8, 18);
   const CONE = new THREE.ConeGeometry(1, 1, 10);
 
@@ -469,7 +474,7 @@
       [0.45, -0.62],
     ]) {
       p = L(fx, fz);
-      put(CYL, MC.rubber, p[0], 0.3, p[1], 0, ry, PI / 2, 0.3, 0.2, 0.3);
+      put(WHEEL_X, MC.rubber, p[0], 0.3, p[1], 0, ry, 0, 0.2, 0.3, 0.3);
     }
     addCollider(px, 0, pz, 1.9, 2.5, 2.4);
     mapRects.push({ x: px, z: pz, w: 1.9, d: 2.4, c: '#5a6068' });

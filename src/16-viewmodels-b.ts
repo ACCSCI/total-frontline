@@ -1,5 +1,15 @@
 // @ts-nocheck -- procedural viewmodel builder; tighten after part() overloads are typed.
 'use strict';
+function makeReloadMagazineSet(mag, root) {
+  const newMag = mag.clone(true),
+    ejectedMag = mag.clone(true);
+  newMag.visible = false;
+  ejectedMag.visible = false;
+  mag.parent.add(newMag);
+  root.add(ejectedMag);
+  return { newMag, ejectedMag };
+}
+
 function buildPistol() {
   const G = new THREE.Group();
   /* slide */
@@ -31,7 +41,12 @@ function buildPistol() {
   part(grip, B(0.042, 0.135, 0.058), POLYMER, 0, -0.066, 0);
   for (let i = 0; i < 5; i++)
     part(grip, B(0.044, 0.009, 0.062), GLOVEPAD, 0, -0.028 - i * 0.021, 0);
-  part(grip, B(0.046, 0.014, 0.062), GUNMETAL, 0, -0.136, 0);
+  const mag = new THREE.Group();
+  mag.position.set(0, -0.136, 0);
+  grip.add(mag);
+  part(mag, B(0.034, 0.11, 0.045), GUNMETAL, 0, 0.055, 0);
+  part(mag, B(0.046, 0.014, 0.062), GUNMETAL, 0, 0, 0);
+  const pistolMags = makeReloadMagazineSet(mag, G);
   /* trigger guard */
   part(G, B(0.04, 0.009, 0.052), POLYMER, 0, -0.056, -0.018);
   part(G, B(0.04, 0.03, 0.009), POLYMER, 0, -0.043, -0.041);
@@ -63,7 +78,11 @@ function buildPistol() {
     muzzle,
     eject,
     slide,
+    mag,
+    ...pistolMags,
     hands,
+    leftHand: lh,
+    rightHand: rh,
     basePos: new THREE.Vector3(0.175, -0.232, -0.754),
     baseRot: new THREE.Vector3(-0.022, 0.072, 0.05),
     adsPos: new THREE.Vector3(0.0006, -0.0448, -0.4935),
@@ -129,6 +148,7 @@ function buildSniper() {
   G.add(mag);
   part(mag, B(0.044, 0.11, 0.095), POLYMER, 0, 0, 0);
   part(mag, B(0.048, 0.014, 0.099), GLOVEPAD, 0, -0.058, 0);
+  const sniperMags = makeReloadMagazineSet(mag, G);
   /* trigger group + guard */
   part(G, B(0.013, 0.03, 0.01), STEEL, 0, -0.052, 0.02);
   part(G, B(0.046, 0.01, 0.062), POLYMER, 0, -0.07, 0.014);
@@ -158,6 +178,9 @@ function buildSniper() {
   const eject = new THREE.Object3D();
   eject.position.set(0.055, 0.02, 0.06);
   G.add(eject);
+  const rightGrip = new THREE.Object3D();
+  rightGrip.position.set(0.01, -0.136, 0.128);
+  G.add(rightGrip);
 
   const hands = new THREE.Group();
   G.add(hands);
@@ -170,13 +193,30 @@ function buildSniper() {
   lh.rotation.set(0.04, 0, -0.16);
   hands.add(lh);
 
+  /* Roll the weapon independently. Neither shoulder inherits this turn. */
+  const weaponPivot = new THREE.Group();
+  for (const child of [...G.children]) {
+    /* Both loose magazines live in the same upright space as the hands. The
+       seated mag remains on the rifle, but rolling the receiver must not roll
+       a magazine that has already been pulled free or fetched from a pouch. */
+    if (child !== hands && child !== sniperMags.ejectedMag && child !== sniperMags.newMag)
+      weaponPivot.add(child);
+  }
+  G.add(weaponPivot);
+
   return {
     group: G,
+    weaponPivot,
     muzzle,
     eject,
     bolt,
     knob,
+    mag,
+    ...sniperMags,
+    rightGrip,
     hands,
+    leftHand: lh,
+    rightHand: rh,
     basePos: new THREE.Vector3(0.224, -0.262, -1.16),
     baseRot: new THREE.Vector3(-0.022, 0.084, 0.055),
     /* the scope tube sits at y 0.118, so the eye line drops by that much */
@@ -191,19 +231,34 @@ function buildSniper() {
 function buildLMG() {
   const G = new THREE.Group();
   /* receiver — taller and longer than the rifle's */
-  part(G, B(0.082, 0.104, 0.4), GUNMETAL, 0, 0, -0.02);
-  part(G, B(0.086, 0.02, 0.34), GUNMETAL, 0, 0.062, -0.02); // top cover
-  part(G, B(0.03, 0.026, 0.12), POLYMER, 0, 0.086, -0.2); // carrying handle base
-  part(G, B(0.018, 0.02, 0.1), POLYMER, 0, 0.108, -0.2); // handle
+  part(G, B(0.128, 0.118, 0.42), GUNMETAL, 0, -0.002, -0.02);
+  /* stepped side plates keep the receiver from reading as one skinny cuboid
+     head-on while leaving the centre sight channel completely open */
+  for (const x of [-0.066, 0.066]) part(G, B(0.018, 0.08, 0.3), STEEL, x, -0.006, -0.035);
+  /* Hinged at the rear so the feed cover can actually open during a belt-box
+     change instead of rotating as an impossible slab around its centre. */
+  const topCover = new THREE.Group();
+  topCover.position.set(0, 0.062, 0.15);
+  G.add(topCover);
+  part(topCover, B(0.136, 0.024, 0.36), GUNMETAL, 0, 0, -0.18);
+  /* Fold the carry handle to the left of the 0.115 sight line. Centring it on
+     the feed cover put an opaque block directly inside the rear aperture. */
+  part(topCover, B(0.03, 0.026, 0.12), POLYMER, -0.042, 0.024, -0.35); // handle base
+  part(topCover, B(0.018, 0.02, 0.1), POLYMER, -0.042, 0.046, -0.35); // handle
   /* feed tray + the belt can slung under the left side */
-  part(G, B(0.07, 0.03, 0.12), GUNMETAL, -0.01, -0.062, -0.06);
-  part(G, B(0.056, 0.13, 0.15), POLYTAN, -0.062, -0.128, -0.05);
-  part(G, B(0.06, 0.014, 0.154), POLYMER, -0.062, -0.2, -0.05);
+  part(G, B(0.112, 0.034, 0.14), GUNMETAL, -0.012, -0.07, -0.06);
+  const mag = new THREE.Group();
+  mag.position.set(-0.082, -0.14, -0.05);
+  G.add(mag);
+  part(mag, B(0.086, 0.148, 0.17), POLYTAN, 0, 0, 0);
+  part(mag, B(0.092, 0.016, 0.176), POLYMER, 0, -0.082, 0);
+  const lmgMags = makeReloadMagazineSet(mag, G);
   /* belt link strip disappearing into the feed tray */
   part(G, B(0.05, 0.012, 0.06), STEEL, -0.032, -0.058, -0.05);
   /* heat shield with vent slots, barrel, muzzle brake */
-  part(G, B(0.076, 0.08, 0.26), GUNMETAL, 0, 0.002, -0.36);
-  for (let i = 0; i < 4; i++) part(G, B(0.08, 0.014, 0.024), POLYMER, 0, -0.02, -0.46 + i * 0.06);
+  part(G, B(0.112, 0.09, 0.28), GUNMETAL, 0, 0.002, -0.37);
+  for (let i = 0; i < 4; i++)
+    part(G, B(0.118, 0.016, 0.026), POLYMER, 0, -0.024, -0.47 + i * 0.064);
   part(G, CYLZ(0.019, 0.019, 0.34, 10), STEEL, 0, 0.008, -0.62);
   part(G, CYLZ(0.027, 0.024, 0.07, 10), GUNMETAL, 0, 0.008, -0.79);
   for (let i = 0; i < 3; i++)
@@ -211,13 +266,26 @@ function buildLMG() {
   /* folded bipod legs under the barrel */
   part(G, B(0.012, 0.012, 0.16), STEEL, 0.03, -0.05, -0.58);
   part(G, B(0.012, 0.012, 0.16), STEEL, -0.03, -0.05, -0.58);
-  /* irons: aperture ring rear, post front, both on the 0.115 sight line */
-  part(G, TUBEZ(0.017, 0.012, 14), TUBE_MAT, 0, 0.115, 0.1);
-  part(G, B(0.03, 0.05, 0.012), GUNMETAL, 0, 0.088, 0.1);
-  part(G, B(0.04, 0.05, 0.05), GUNMETAL, 0, 0.03, -0.66);
-  part(G, B(0.014, 0.075, 0.012), GUNMETAL, 0, 0.0775, -0.66);
+  /* A bright, open ghost ring and raised front post sit fully above the feed
+     cover. RingGeometry gives the aperture visible radial thickness without
+     putting an end-cap across the player's sight picture. */
+  const rearSight = part(
+    G,
+    new THREE.RingGeometry(0.019, 0.027, 24),
+    STEEL,
+    0,
+    0.2,
+    0.1
+  );
+  part(G, B(0.012, 0.08, 0.012), GUNMETAL, 0, 0.135, 0.1);
+  part(G, B(0.05, 0.025, 0.05), GUNMETAL, 0, 0.09, -0.66);
+  for (const x of [-0.025, 0.025]) part(G, B(0.009, 0.1, 0.012), GUNMETAL, x, 0.16, -0.66);
+  part(G, B(0.008, 0.075, 0.012), STEEL, 0, 0.1625, -0.66);
   /* charging handle + ejection port */
-  part(G, B(0.03, 0.016, 0.05), GUNMETAL, 0.046, 0.02, 0.08);
+  const chargeHandle = new THREE.Group();
+  chargeHandle.position.set(0.046, 0.02, 0.08);
+  G.add(chargeHandle);
+  part(chargeHandle, B(0.03, 0.016, 0.05), GUNMETAL, 0, 0, 0);
   part(G, B(0.01, 0.032, 0.08), GUNMETAL, 0.044, 0.01, -0.04);
   /* grip + trigger */
   const grip = new THREE.Group();
@@ -255,14 +323,20 @@ function buildLMG() {
     group: G,
     muzzle,
     eject,
+    mag,
+    ...lmgMags,
+    topCover,
+    chargeHandle,
+    aimPoint: rearSight,
     hands,
+    leftHand: lh,
     /* carried lower than the rifle — it is a lump of a gun */
     basePos: new THREE.Vector3(0.215, -0.262, -0.96),
     baseRot: new THREE.Vector3(-0.026, 0.082, 0.055),
-    /* aperture/post at y 0.115 in model space */
-    adsPos: new THREE.Vector3(0.0006, -0.115, -0.88),
+    /* raised ghost-ring/post line */
+    adsPos: new THREE.Vector3(0.0006, -0.2, -0.96),
     adsRot: new THREE.Vector3(0, 0, 0),
-    adsRef: 0.995,
+    adsRef: 1.08,
   };
 }
 
@@ -315,8 +389,10 @@ function buildJugGatling() {
     hands: new THREE.Group(),
     basePos: new THREE.Vector3(0.25, -0.34, -1.08),
     baseRot: new THREE.Vector3(-0.045, 0.095, 0.075),
-    adsPos: new THREE.Vector3(0.028, -0.18, -0.98),
-    adsRot: new THREE.Vector3(-0.015, 0.018, 0.01),
+    /* Right click braces the weight against the suit: lift the cluster and
+       pull the whole weapon closer, without pretending it has iron sights. */
+    adsPos: new THREE.Vector3(0.16, -0.235, -0.86),
+    adsRot: new THREE.Vector3(-0.025, 0.055, 0.045),
     adsRef: 1.12,
   };
 }

@@ -228,9 +228,14 @@ function nukeHouse(cx, cz, facing, siding) {
     scene.add(ramp);
     worldSolid.push(ramp);
     groundMesh.push(ramp);
-    /* the open side is sealed by a tall thin wall so nobody clips under the
-       flight; it sits beside the walk strip, never under it */
-    addCollider((stT + stB) / 2, 0, Z0 + 1.33, L, H + 0.3, 0.26);
+    /* Keep the ramp edge visually readable, but do not seal it with an
+       invisible full-height collider: the player's radius made that wall
+       reach into the climb line and catch people halfway up. */
+    const rail = new THREE.Mesh(rg.clone(), NMAT.woodDk);
+    rail.scale.z = 0.08;
+    rail.position.set(stT, 0, Z0 + 1.21);
+    rail.castShadow = true;
+    scene.add(rail);
   }
 
   /* upstairs floor: three slabs around the stair well — a floor, not a wall */
@@ -286,8 +291,17 @@ function nukeHouse(cx, cz, facing, siding) {
   box(2.5, 0.1, 3.4, px, 2.32, cz, NMAT.roof, { collide: false, ground: true });
   for (const dz of [-1.5, 1.5]) box(0.14, 2.32, 0.14, px + facing * 1.05, 0, cz + dz, NMAT.trim);
 
-  /* furniture — cover you can fight around, downstairs and up */
-  box(2.0, 0.72, 0.9, cx - facing * 2.8, 0.08, cz - 2.6, NMAT.red); /* sofa   */
+  /* The sofa sits against the rear wall, facing into the room. Mirroring it
+     with the house keeps both layouts correct and leaves the stairs clear. */
+  {
+    const sx = cx - facing * 4.32,
+      sz = cz + 1.55;
+    box(0.78, 0.34, 1.9, sx, 0.08, sz, NMAT.red);
+    box(0.18, 0.58, 1.9, sx - facing * 0.38, 0.31, sz, NMAT.red, { collide: false });
+    for (const dz of [-0.86, 0.86])
+      box(0.82, 0.48, 0.18, sx, 0.08, sz + dz, NMAT.woodDk, { collide: false });
+    box(0.62, 0.12, 1.58, sx + facing * 0.04, 0.42, sz, NMAT.trim, { collide: false });
+  }
   box(1.3, 0.5, 0.75, cx, 0.08, cz + 0.6, NMAT.woodDk); /* table  */
   box(0.9, 1.4, 0.4, cx + facing * 3.6, 0.08, cz + 2.9, NMAT.woodDk); /* cabinet*/
   box(2.0, 0.5, 1.5, cx + facing * 2.6, H + 0.15, Z1 - 1.5, NMAT.trim); /* bed    */
@@ -315,11 +329,15 @@ function nukeSedan(cx, cz, alongZ, mat) {
   ]) {
     const w = new THREE.Mesh(NUKE_WHEEL_CAR, MAT.rubber);
     if (alongZ) {
-      w.rotation.y = PI / 2;
       w.position.set(cx + sx * 0.82, 0.33, cz + sz * 1.45);
     } else {
+      /* The geometry's axle starts on X. A car running along X needs its
+         axle on Z; a car running along Z already has the correct X axle. */
+      w.rotation.y = PI / 2;
       w.position.set(cx + sx * 1.45, 0.33, cz + sz * 0.82);
     }
+    w.userData.vehicleWheel = true;
+    w.userData.vehicleAlongZ = alongZ;
     w.castShadow = true;
     scene.add(w);
   }

@@ -10,9 +10,13 @@ SFX.gunshot = (() => {
 
   function gunshot(kind, pan, dist) {
     if (!SFX._ok()) return;
+    /* The sampled AK has its own 7.62-style transient. If samples are not
+       available, retain the proven procedural rifle stack at a slightly
+       lower pitch/body balance instead of falling through to the pistol. */
+    const ak = kind === 'ak', smg = kind === 'vector' || kind === 'p90';
+    if (ak || smg) kind = 'rifle';
     dist = dist || 0;
-    const far = clamp(1 - dist / 55, 0.12, 1);
-    const vol = far * far;
+    const vol = SFX._weaponDistanceGain(dist);
     const delay = dist / 340;
     if (kind === 'rifle') {
       /* transient stack: a hard crack, a mid body and a chest thump. The
@@ -47,8 +51,25 @@ SFX.gunshot = (() => {
         delay,
         verb: 0.35,
       });
-      tone({ type: 'triangle', f0: 210, f1: 48, dur: 0.1, gain: 0.42 * vol, pan, delay });
-      tone({ type: 'sine', f0: 82, f1: 38, dur: 0.14, gain: 0.34 * vol, lp: 200, pan, delay });
+      tone({
+        type: 'triangle',
+        f0: ak ? 175 : 210,
+        f1: ak ? 40 : 48,
+        dur: 0.1,
+        gain: (ak ? 0.5 : 0.42) * vol,
+        pan,
+        delay,
+      });
+      tone({
+        type: 'sine',
+        f0: ak ? 68 : 82,
+        f1: ak ? 32 : 38,
+        dur: 0.14,
+        gain: (ak ? 0.42 : 0.34) * vol,
+        lp: 200,
+        pan,
+        delay,
+      });
       noise({
         type: 'highpass',
         freq: 1400,

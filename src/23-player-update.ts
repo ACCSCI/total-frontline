@@ -57,6 +57,7 @@ function startMantle(target) {
 }
 
 function updatePlayer(dt) {
+  if (player.sprintFireRaise > 0) player.sprintFireRaise = Math.max(0, player.sprintFireRaise - dt);
   if (player.dead) {
     /* KIA: input dies with you. The camera slumps over the body while the
        redeploy counter runs — the round itself never stops. */
@@ -74,8 +75,8 @@ function updatePlayer(dt) {
     updateVitalsUI();
   }
   /* ---- look ---- */
-  player.yaw -= mouseDX * SENS * sensScale;
-  player.pitch -= mouseDY * SENS * sensScale;
+  player.yaw -= mouseDX * SENS * SETTINGS.mouseSensitivity * sensScale;
+  player.pitch -= mouseDY * SENS * SETTINGS.mouseSensitivity * sensScale;
   player.pitch = clamp(player.pitch, -PI / 2 + 0.02, PI / 2 - 0.02);
   const swayInX = mouseDX,
     swayInY = mouseDY;
@@ -130,25 +131,53 @@ function updatePlayer(dt) {
   let scopeSwayX = 0,
     scopeSwayY = 0;
   if (wpn.scope && player.adsEase > 0.02) {
-    const a = 0.0125 * player.adsEase * swayAmp;
+    const a =
+      0.0125 * player.adsEase * swayAmp * (player.prone ? 0.45 : player.crouch ? 0.72 : 1);
     scopeSwayX = Math.sin(player.swayT * 0.62) * a + Math.sin(player.swayT * 1.13 + 1.7) * a * 0.3;
     scopeSwayY =
       Math.sin(player.swayT * 0.47 + 2.2) * a * 0.72 + Math.sin(player.swayT * 0.91) * a * 0.22;
   }
 
   /* ---- stance ---- */
-  const wantCrouch = !!(keys['ControlLeft'] || keys['ControlRight'] || keys['KeyC']);
-  const speedNow = Math.hypot(player.vel.x, player.vel.z);
+  const wantCrouch = !!(keys['AltLeft'] || keys['AltRight']);
+  if (player.proneEdge) {
+    player.proneEdge = false;
+    if (player.prone) {
+      const ceil = ceilingAt(player.pos.x, player.pos.z, player.pos.y + PRONE_H);
+      if (ceil - player.pos.y > CROUCH_H + 0.1) {
+        player.prone = false;
+        player.crouch = true;
+      }
+    } else if (!G.jug && player.onGround && player.mantleT <= 0) {
+      player.prone = true;
+      player.crouch = false;
+      player.sprint = false;
+    }
+  }
+  if (G.jug) player.prone = false;
+  if (wantCrouch && player.prone) {
+    const ceil = ceilingAt(player.pos.x, player.pos.z, player.pos.y + PRONE_H);
+    if (ceil - player.pos.y > CROUCH_H + 0.1) player.prone = false;
+  }
   const wantSprint =
-    !G.jug && shiftDown && !wantCrouch && !player.ads && keys['KeyW'] && player.reloadT <= 0;
-  if (!wantCrouch && player.crouch) {
+    !G.jug &&
+    shiftDown &&
+    !wantCrouch &&
+    !player.prone &&
+    !player.ads &&
+    keys['KeyW'] &&
+    player.sprintFireRaise <= 0 &&
+    (player.reloadT <= 0 || !SETTINGS.sprintCancelsReload);
+  if (!player.prone && !wantCrouch && player.crouch) {
     /* only stand if there's headroom */
     const ceil = ceilingAt(player.pos.x, player.pos.z, player.pos.y + CROUCH_H);
     if (ceil - player.pos.y > STAND_H + 0.1) player.crouch = false;
-  } else player.crouch = wantCrouch;
-  player.sprint = wantSprint && !player.crouch;
+  } else if (!player.prone) player.crouch = wantCrouch;
+  player.sprint = wantSprint && !player.crouch && !player.prone;
 
-  player.height = damp(player.height, player.crouch ? CROUCH_H : STAND_H, 13, dt);
+  const stanceHeight = player.prone ? PRONE_H : player.crouch ? CROUCH_H : STAND_H;
+  player.height = damp(player.height, stanceHeight, 13, dt);
+  updateStanceUI();
 
   /* ---- wish direction ---- */
   const f = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
@@ -163,7 +192,13 @@ function updatePlayer(dt) {
     wz /= wl;
   }
 
-  let maxSpeed = player.crouch ? CROUCH_SPEED : player.sprint ? SPRINT_SPEED : WALK_SPEED;
+  let maxSpeed = player.prone
+    ? PRONE_SPEED
+    : player.crouch
+      ? CROUCH_SPEED
+      : player.sprint
+        ? SPRINT_SPEED
+        : WALK_SPEED;
   if (player.reloadT > 0) maxSpeed *= 0.86;
   maxSpeed *= 1 - 0.4 * player.adsEase;
   if (G.jug) maxSpeed *= 0.62;
@@ -198,14 +233,14 @@ function updatePlayer(dt) {
   player.spaceEdge = false;
   if (player.onGround) player.jumpsLeft = 1; // the air hop
   let jumpedNow = false;
-  if (keys['Space'] && player.onGround && !player.crouch) {
+  if (keys['Space'] && player.onGround && !player.crouch && !player.prone) {
     player.vel.y = JUMP_V * (G.jug ? 0.72 : 1);
     player.onGround = false;
     player.jumpsLeft = 1;
     jumpedNow = true;
     SFX.jumpSound();
   }
-  if (!jumpedNow && !player.onGround && player.mantleT <= 0) {
+  if (!player.prone && !jumpedNow && !player.onGround && player.mantleT <= 0) {
     /* holding space into a ledge climbs it; a fresh tap does too, so the
        double jump is only spent when there's nothing to grab */
     if (!G.jug && keys['Space'] && player.vel.y < 2.6) {
@@ -295,9 +330,18 @@ function updatePlayer(dt) {
   player.bobAmp = damp(player.bobAmp, moving ? clamp(hSpeed / WALK_SPEED, 0, 1.5) : 0, 9, dt);
   if (moving) {
     const prev = player.stepPhase;
-    player.stepPhase += dt * hSpeed * (G.jug ? 0.92 : player.crouch ? 1.05 : 1.42);
+    player.stepPhase +=
+      dt * hSpeed * (G.jug ? 0.92 : player.prone ? 0.72 : player.crouch ? 1.05 : 1.42);
     if (Math.floor(prev / PI) !== Math.floor(player.stepPhase / PI)) {
-      const vol = G.jug ? 1.25 : player.crouch ? 0.35 : player.sprint ? 1.15 : 0.8;
+      const vol = G.jug
+        ? 1.25
+        : player.prone
+          ? 0.18
+          : player.crouch
+            ? 0.35
+            : player.sprint
+              ? 1.15
+              : 0.8;
       SFX.footstep(vol, clamp(Math.sin(player.stepPhase) * 0.35, -1, 1));
     }
   }
@@ -346,8 +390,9 @@ function updatePlayer(dt) {
   /* the ADS blend rides on top of the damped hipfire value so the 0.2s ramp
      is exact rather than doubly smoothed */
   player.fovKick = damp(player.fovKick, 0, 13, dt);
+  const aimFov = wpn.bracedAim ? fovCur : wpn.adsFov;
   const fovNow =
-    lerp(fovCur, wpn.adsFov, player.adsEase) + player.fovKick * (1 - player.adsEase * 0.75);
+    lerp(fovCur, aimFov, player.adsEase) + player.fovKick * (1 - player.adsEase * 0.75);
   if (Math.abs(camera.fov - fovNow) > 0.005) {
     camera.fov = fovNow;
     camera.updateProjectionMatrix();
@@ -355,28 +400,22 @@ function updatePlayer(dt) {
   /* mouse feel has to scale with zoom or the sniper is unusable */
   sensScale = lerp(
     1,
-    clamp(Math.tan((wpn.adsFov * PI) / 360) / Math.tan((BASE_FOV * PI) / 360), 0.18, 1),
+    wpn.bracedAim
+      ? 1
+      : clamp(Math.tan((wpn.adsFov * PI) / 360) / Math.tan((BASE_FOV * PI) / 360), 0.18, 1),
     player.adsEase
   );
   if (G.jug) sensScale *= 0.82;
 
   /* ---- weapon spread recovery ---- */
   const w = WEAPONS[player.weapon];
-  w.spread = Math.max(w.spreadBase, w.spread - w.spreadRecover * dt);
+  w.spread = Math.max(
+    w.spreadBase,
+    w.spread - w.spreadRecover * stanceRecoveryMultiplier() * dt
+  );
 
-  /* ---- reload ---- */
-  if (player.reloadT > 0) {
-    const before = player.reloadT;
-    player.reloadT -= dt;
-    const total = w.reloadTime;
-    const prog = 1 - player.reloadT / total;
-    if (before / total > 0.62 && player.reloadT / total <= 0.62) SFX.magIn();
-    if (before / total > 0.22 && player.reloadT / total <= 0.22) SFX.boltClick();
-    if (player.reloadT <= 0) {
-      player.reloadT = 0;
-      finishReload();
-    }
-  }
+  if (player.meleeT > 0) player.meleeT = Math.max(0, player.meleeT - dt);
+  updatePlayerReload(dt);
   /* ---- pump ---- */
   if (player.pumpT > 0) {
     player.pumpT -= dt;
@@ -432,6 +471,7 @@ function updatePlayer(dt) {
       player.switchTo = -1;
       WEAPONS[player.weapon].vm.group.visible = true;
       updateAmmoUI();
+      SFX.weaponSwap(!!WEAPONS[player.weapon].heavy);
     }
     if (player.switching <= 0) {
       player.switching = 0;

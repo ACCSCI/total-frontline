@@ -155,7 +155,9 @@ const MAP_YARD = captureMap(_preYardScene, {
       [14, -10],
     ], // roamer
   ],
-  upper: new Set([1, 6]),
+  /* respawns are always staged outdoors; routes may still take combatants
+     through structures after they leave their side of the map */
+  upper: new Set(),
   upperY: 4.42,
   menuCam: menuCamYard,
   env: {

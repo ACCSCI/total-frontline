@@ -212,6 +212,7 @@ function buildEnemyModel() {
     sh.position.set(s * 0.275, 0.02, 0);
     rig.add(sh);
     part(sh, B(0.15, 0.135, 0.165), E_MAT.vest, 0, -0.035, 0); // shoulder pad
+    part(sh, B(0.155, 0.07, 0.176), E_MAT.accent, 0, -0.07, 0); // red/blue IFF patch
     part(sh, EB(0.135, 0.34, 0.145), E_MAT.cloth, 0, -0.17, 0);
     part(sh, B(0.14, 0.075, 0.15), E_MAT.vest, 0, -0.3, 0); // elbow pad
     const el = new THREE.Group();
@@ -254,8 +255,9 @@ function buildEnemyModel() {
   return { model, body, legs, arms, rig, gun, gunMuzzle, head, hbHead, hbBody, hbLegs };
 }
 
-/* name tag + health bar sprite; allies pass a colour so blue reads friendly */
-function makeTag(name, color) {
+/* High-contrast IFF plate + health bar. Depth testing keeps it from becoming
+   an accidental wallhack while red/blue remains legible in a crowded fight. */
+function makeTag(name, color, side?) {
   const c = document.createElement('canvas');
   c.width = 256;
   c.height = 76;
@@ -269,19 +271,36 @@ function makeTag(name, color) {
     fog: false,
   });
   const spr = new THREE.Sprite(mat);
-  spr.scale.set(1.55, 0.46, 1);
-  spr.position.y = 2.16;
+  spr.scale.set(1.75, 0.52, 1);
+  spr.position.y = 2.22;
   const ctx = c.getContext('2d');
   function draw(hp, alerted) {
     ctx.clearRect(0, 0, 256, 76);
-    ctx.font = 'bold 27px "Segoe UI", Arial, sans-serif';
+    const iff = color || '#ff5145';
+    ctx.fillStyle = 'rgba(4,8,12,.78)';
+    ctx.fillRect(31, 2, 194, 38);
+    ctx.strokeStyle = iff;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(31, 2, 194, 38);
+    ctx.beginPath();
+    ctx.moveTo(18, 21);
+    ctx.lineTo(28, 11);
+    ctx.lineTo(38, 21);
+    ctx.lineTo(28, 31);
+    ctx.closePath();
+    ctx.fillStyle = iff;
+    ctx.fill();
+    ctx.font = 'bold 13px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(side === 'ally' ? '友军' : '敌军', 44, 13);
+    ctx.font = 'bold 25px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(0,0,0,.85)';
-    ctx.strokeText(name, 128, 22);
-    ctx.fillStyle = color || (alerted ? '#ff6a58' : '#e9eef3');
-    ctx.fillText(name, 128, 22);
+    ctx.strokeText(name, 136, 27);
+    ctx.fillStyle = iff;
+    ctx.fillText(name, 136, 27);
     const bx = 40,
       bw = 176,
       by = 44,
@@ -305,7 +324,7 @@ function makeTag(name, color) {
     t.needsUpdate = true;
   }
   draw(100, false);
-  return { sprite: spr, draw, tex: t };
+  return { sprite: spr, draw, tex: t, side: side || 'enemy', color: color || '#ff5145' };
 }
 
 /* patrol routes (loops of waypoints) — per map, installed by applyMap */
@@ -314,6 +333,7 @@ let UPPER_ROUTES = new Set();
 
 const ST = { PATROL: 0, ALERT: 1, COMBAT: 2, DEAD: 3 };
 const enemies = [];
+const TEAM_SIZE = 6;
 let enemyHitMeshes = [];
 /* deathmatch: the dead come back. Entries are {e, t} seconds-to-respawn. */
 const respawnQueue = [];
@@ -334,7 +354,7 @@ function makeEnemy(i) {
   });
   const obj = new THREE.Group();
   obj.add(parts.model);
-  const tag = makeTag(ENEMY_NAMES[i]);
+  const tag = makeTag(ENEMY_NAMES[i], '#ff5145', 'enemy');
   obj.add(tag.sprite);
   const upper = UPPER_ROUTES.has(i);
   /* Hand-placed waypoints drift into props as the map changes, and a body
@@ -441,7 +461,7 @@ function placeEnemy(e) {
 }
 
 function spawnEnemies() {
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < TEAM_SIZE; i++) {
     const e = makeEnemy(i);
     placeEnemy(e);
     scene.add(e.obj);

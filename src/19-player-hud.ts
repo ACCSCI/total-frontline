@@ -19,7 +19,9 @@ const player: any = {
   eye: STAND_H,
   onGround: true,
   crouch: false,
+  prone: false, proneEdge: false,
   sprint: false,
+  sprintFireRaise: 0,
   bob: 0,
   bobAmp: 0,
   stepPhase: 0,
@@ -37,6 +39,11 @@ const player: any = {
   switching: 0,
   switchTo: -1,
   reloadT: 0,
+  reloadDuration: 0,
+  reloadEmpty: false,
+  reloadPhase: 0,
+  reloadRounds: 0,
+  meleeT: 0,
   pumpT: 0,
   boltT: 0,
   boltPhase: 0,
@@ -117,7 +124,7 @@ const UI: Record<string, any> = {
   gunshipHud: $('gunshipHud'),
   gunshipTime: $('gunshipTime'),
   gunshipWeapons: [...document.querySelectorAll('.ghWeapon')],
-  gunshipTargets: $('gunshipTargets'),
+  gunshipTargets: $('gunshipTargets'), gunshipSelf: $('gunshipSelf'), slots: [...document.querySelectorAll('.slot')],
   gunshipTargetEls: [],
   jugFrame: $('jugFrame'),
   jugStatus: $('jugStatus'),
@@ -125,7 +132,6 @@ const UI: Record<string, any> = {
   edgeGlow: $('edgeGlow'),
   minimap: $('minimap'),
   mctx: $('minimap').getContext('2d'),
-  slots: [...document.querySelectorAll('.slot')],
   cross: $('cross'),
   scope: $('scope'),
   retWrap: $('retWrap'),
@@ -154,6 +160,7 @@ function setGunshipUI(on) {
   UI.hud.classList.toggle('gunship', on);
   if (!on) {
     for (const el of UI.gunshipTargetEls) el.style.display = 'none';
+    UI.gunshipSelf.style.display = 'none';
     return;
   }
   while (UI.gunshipTargetEls.length < Math.max(10, enemies.length)) {
@@ -235,6 +242,7 @@ function updateAmmoUI() {
   });
 }
 function showHitmark(kill) {
+  syncHitmarkToAim();
   UI.hitmark.classList.remove('show', 'kill');
   void UI.hitmark.offsetWidth;
   if (kill) UI.hitmark.classList.add('kill');
@@ -254,9 +262,9 @@ function killFeed(victim, head, killer) {
   }, 4200);
   while (UI.feed.children.length > 5) UI.feed.firstChild.remove();
 }
-/* killstreaks waiting on the player's call — docked on the left, keys 6–0 */
+/* killstreaks waiting on the player's call — docked on the left, keys F1–F5 */
 function updateStreakDock() {
-  const keys = ['6', '7', '8', '9', '0'];
+  const keys = ['F1', 'F2', 'F3', 'F4', 'F5'];
   let html = '';
   G.streaksReady.forEach((s, i) => {
     html += `<div class="sk"><b>${keys[i]}</b><span>${s.name}</span></div>`;
@@ -337,10 +345,8 @@ const XH: any = {
      between the inner and outer marks, so anything past about 1.5px of bloom
      runs the two together into one long tick. Walking should still read as two
      marks; sprinting, jumping and firing are the states allowed to fuse. */
-  moveErr: 0.26, // px per m/s
-  airErr: 3.0,
+  baseScale: 105, // px per radian: each weapon's base cone has its own resting size
   reloadErr: 2.0,
-  crouchMult: 0.7,
   fireScale: 240, // px per radian of accumulated weapon spread
   fireHold: 0.11, // firing term stays on this long past a round —
   // just over the 0.086s between rifle rounds
@@ -423,10 +429,12 @@ function drawCrosshair(iA) {
 }
 
 function updateCrosshair(dt) {
+  syncHitmarkToAim();
   const w = WEAPONS[player.weapon];
   const speed = Math.hypot(player.vel.x, player.vel.z);
-  let target = speed * XH.moveErr + (player.onGround ? 0 : XH.airErr);
-  if (player.crouch) target *= XH.crouchMult;
+  let target =
+    (w.spreadBase + (speed / 7) * w.moveSpread + (player.onGround ? 0 : w.airSpread)) *
+    XH.baseScale * stanceSpreadMultiplier(w);
   if (player.reloadT > 0) target += XH.reloadErr;
 
   /* While rounds are still going out, follow the weapon's real accumulated
@@ -440,7 +448,7 @@ function updateCrosshair(dt) {
     if (G.shots > crossShots) crossFireT = XH.fireHold;
     crossShots = G.shots;
   }
-  if (crossFireT > 0) target += (w.spread - w.spreadBase) * XH.fireScale;
+  if (crossFireT > 0) target += (w.spread - w.spreadBase) * XH.fireScale * stanceSpreadMultiplier(w);
 
   target *= lerp(1, 0.45, player.adsEase);
   target = clamp(target, 0, XH.maxSpread);
@@ -462,7 +470,8 @@ function updateCrosshair(dt) {
     /* the gun would otherwise render straight through the lens */
     vmRoot.visible = scopeK < 0.92;
   }
-  const crossHidden = player.adsEase > 0.12 || !!G.gunship?.controlled;
+  /* The Juggernaut braces a sightless minigun; its hip reticle stays visible. */
+  const crossHidden = (player.adsEase > 0.12 && !w.bracedAim) || !!G.gunship?.controlled;
   if (crossHidden !== UI._crossHidden) {
     UI._crossHidden = crossHidden;
     UI.cross.classList.toggle('hidden', crossHidden);

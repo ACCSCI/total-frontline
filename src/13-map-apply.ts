@@ -34,6 +34,7 @@ function applyMap(rec) {
      bloom threshold than the yard, or every sunlit wall smears into a halo */
   brightMat.uniforms.threshold.value = E.bloomT || 0.95;
   compMat.uniforms.expo.value = E.expo || 1.0;
+  rebuildGroundRayGrid();
   walkable.reset();
   $('mapMode').textContent = rec.tag;
   $('endSub').textContent = rec.sub;
@@ -212,6 +213,57 @@ const DOWN = new THREE.Vector3(0, -1, 0),
 const _downRay = new THREE.Raycaster(new THREE.Vector3(), DOWN, 0, 90);
 const _upRay = new THREE.Raycaster(new THREE.Vector3(), UPV, 0, 12);
 const _tmpV = new THREE.Vector3();
+
+/* Ground snapping is queried once per living soldier, every frame. Passing the
+   complete map to Raycaster made a Nuketown snap inspect 220 meshes even though
+   a vertical ray can only touch geometry in one small patch. This exact X/Z
+   broad phase keeps only meshes whose world-space bounds overlap an 8 m cell;
+   InstancedMesh is deliberately kept in the fallback list because its shared
+   geometry bounds do not describe all instances in three r128. */
+const GROUND_RAY_CELL = 8;
+let groundRayGrid = new Map(),
+  groundRayGlobals = [],
+  groundRayReady = false;
+
+function groundRayKey(x, z) {
+  return `${Math.floor(x / GROUND_RAY_CELL)},${Math.floor(z / GROUND_RAY_CELL)}`;
+}
+
+function rebuildGroundRayGrid() {
+  groundRayGrid = new Map();
+  groundRayGlobals = [];
+  groundRayReady = false;
+  const box = new THREE.Box3();
+  for (const mesh of groundMesh) {
+    if (mesh instanceof THREE.InstancedMesh) {
+      groundRayGlobals.push(mesh);
+      continue;
+    }
+    mesh.updateWorldMatrix(true, false);
+    box.setFromObject(mesh);
+    const minX = Math.floor(box.min.x / GROUND_RAY_CELL),
+      maxX = Math.floor(box.max.x / GROUND_RAY_CELL),
+      minZ = Math.floor(box.min.z / GROUND_RAY_CELL),
+      maxZ = Math.floor(box.max.z / GROUND_RAY_CELL);
+    for (let iz = minZ; iz <= maxZ; iz++) {
+      for (let ix = minX; ix <= maxX; ix++) {
+        const key = `${ix},${iz}`,
+          cell = groundRayGrid.get(key);
+        if (cell) cell.push(mesh);
+        else groundRayGrid.set(key, [mesh]);
+      }
+    }
+  }
+  if (groundRayGlobals.length) {
+    for (const cell of groundRayGrid.values()) cell.push(...groundRayGlobals);
+  }
+  groundRayReady = true;
+}
+
+function groundRayCandidates(x, z) {
+  if (!groundRayReady) return groundMesh;
+  return groundRayGrid.get(groundRayKey(x, z)) || groundRayGlobals;
+}
 /**
  * Highest walkable surface at or below `maxY`. Casting starts slightly above
  * `maxY` so overhangs the entity can't reach are skipped rather than snapped to.
@@ -219,7 +271,7 @@ const _tmpV = new THREE.Vector3();
 function groundAt(x, z, maxY) {
   _downRay.set(_tmpV.set(x, maxY + 0.12, z), DOWN);
   _downRay.far = 90;
-  const hits = _downRay.intersectObjects(groundMesh, false);
+  const hits = _downRay.intersectObjects(groundRayCandidates(x, z), false);
   for (let i = 0; i < hits.length; i++) {
     if (hits[i].point.y <= maxY + 0.02) return hits[i].point.y;
   }

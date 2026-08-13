@@ -25,7 +25,7 @@ const FOG_COLOR = 0xa39b8d;
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0074);
 
-const BASE_FOV = 75;
+let BASE_FOV = clamp(Number(localStorage.getItem('tf.baseFov')) || 75, 65, 95);
 /* Near at 0.06 against a 400 far gives a 6700:1 depth range and the far side of
    the yard starts to shimmer where two surfaces nearly meet. Nothing solid ever
    gets within the player's 0.36 collision radius and the gun renders in its own
@@ -90,6 +90,7 @@ function makeRT(w, h, depth) {
   return new THREE.WebGLRenderTarget(w, h, opts);
 }
 let sceneRT: ReturnType<typeof makeRT> | null = null;
+let worldRT: ReturnType<typeof makeRT> | null = null;
 let bloomA: ReturnType<typeof makeRT> | null = null;
 let bloomB: ReturnType<typeof makeRT> | null = null;
 let RTW = 0;
@@ -104,10 +105,12 @@ function allocTargets() {
   RTH = Math.max(2, Math.floor(innerHeight * DPR * renderScale));
   if (sceneRT) {
     sceneRT.dispose();
+    worldRT.dispose();
     bloomA.dispose();
     bloomB.dispose();
   }
   sceneRT = makeRT(RTW, RTH, true);
+  worldRT = makeRT(RTW, RTH, true);
   const bw = Math.max(2, RTW >> 2),
     bh = Math.max(2, RTH >> 2);
   bloomA = makeRT(bw, bh, false);
@@ -207,6 +210,12 @@ const brightMat = postMat(
     gl_FragColor = vec4(c * s, 1.0);
   }`,
   { tDiffuse: { value: null }, threshold: { value: 0.95 }, knee: { value: 0.55 } }
+);
+
+const copyMat = postMat(
+  `uniform sampler2D tDiffuse; varying vec2 vUv;
+   void main(){ gl_FragColor = texture2D(tDiffuse, vUv); }`,
+  { tDiffuse: { value: null } }
 );
 
 const blurMat = postMat(
