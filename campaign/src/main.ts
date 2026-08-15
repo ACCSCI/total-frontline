@@ -143,7 +143,6 @@ function startIntroFlight() {
 }
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 function gridFootprint(
   cx: number,
@@ -236,7 +235,7 @@ async function boot() {
     setLoading('正在生成全新灰盒线性地图：黑森林河谷…');
     level = buildP0Level(scene);
     player = new FirstPersonPlayer(level);
-    await nextFrame();
+    await wait(0);
 
     setLoading('正在生成关卡道具（纯程序化几何）…');
     const crate = buildSupplyCrate();
@@ -270,7 +269,7 @@ async function boot() {
     cloneSnap();
     level.registerPropSnap(cloneSnap);
     for (const dx of [-0.32, 0, 0.32]) level.addObstacle(-4.5 + dx, -62, 0.26);
-    await nextFrame();
+    await wait(0);
 
     /* Build the debugger AFTER the crates exist so raycast selection can see them. */
     setLoading('正在装配战役规则与战术系统…');
@@ -280,7 +279,7 @@ async function boot() {
     viewmodel = new ViewmodelRig(campaign);
     crosshair = new Crosshair(crossCanvas);
     crosshair.setHidden(true);
-    await nextFrame();
+    await wait(0);
     (window as unknown as { __P0_DEBUG?: unknown }).__P0_DEBUG = {
       level,
       scene,
@@ -310,13 +309,13 @@ async function boot() {
 
     setLoading('初始化完成，准备进入任务简报');
     loadingSub.textContent = '单击进入任务简报 · ESC 可跳过开场';
-    await nextFrame();
 
     loading.hidden = true;
     hud.hidden = true;
     introOverlay.hidden = false;
     introState = 'waiting';
     introOverlay.classList.remove('typing', 'fading', 'flying');
+    await wait(0);
 
     /* Soldier construction is the heaviest remaining work; let the loading
        screen disappear first, then deploy before the player reaches controls. */
