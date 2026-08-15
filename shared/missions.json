@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "mission01": {
+    "id": "nightfall",
+    "title": "鹰落",
+    "subtitle": "NIGHTFALL",
+    "location": "斯科拉边境 · 黑森林河谷",
+    "time": "当地时间 02:17 · 暴雨",
+    "objectives": [
+      { "id": "o1", "label": "抵达林间旧伐木道", "z": 44, "trigger": 46 },
+      { "id": "o2", "label": "穿过泥泞浅滩", "z": 4, "trigger": 6 },
+      { "id": "o3", "label": "抵达公路桥接应点", "z": -78, "trigger": -72 }
+    ],
+    "weaponPickups": [
+      { "weapon": "ks12", "x": 5.5, "z": 36 },
+      { "weapon": "ak12", "x": -4.5, "z": 4 },
+      { "weapon": "sr7", "x": 6.5, "z": -20 },
+      { "weapon": "p90", "x": 3.5, "z": -62 }
+    ],
+    "ammoPickups": [
+      { "x": -5.5, "z": 68 },
+      { "x": 4.0, "z": 44 },
+      { "x": 6.5, "z": 20 },
+      { "x": -3.5, "z": -46 },
+      { "x": -6.0, "z": -78 }
+    ],
+    "enemyPositions": [
+      { "x": 6, "z": 50 },
+      { "x": -7, "z": 30 },
+      { "x": 5, "z": 10 },
+      { "x": -5, "z": -10 },
+      { "x": 7, "z": -34 },
+      { "x": -6, "z": -58 }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ import { PropDebugger } from './debug-mode';
 import { predictGroundDelta } from './ground-model';
 import { CampaignRules, P0Combat } from './campaign';
 import { ViewmodelRig } from './viewmodel';
+import { Crosshair } from './crosshair';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const loading = document.getElementById('loading') as HTMLDivElement;
@@ -18,7 +19,7 @@ const hint = document.getElementById('hint') as HTMLDivElement;
 const cutsceneBars = document.getElementById('cutsceneBars') as HTMLDivElement;
 const objectiveText = document.getElementById('objectiveText') as HTMLDivElement;
 const completePanel = document.getElementById('complete') as HTMLDivElement;
-const crosshair = document.getElementById('crosshair') as HTMLDivElement;
+const crossCanvas = document.getElementById('cross') as HTMLCanvasElement;
 const introOverlay = document.getElementById('introOverlay') as HTMLDivElement;
 const introTyped = document.getElementById('introTyped') as HTMLSpanElement;
 const beaconLayer = document.getElementById('beaconLayer') as HTMLDivElement;
@@ -40,6 +41,7 @@ let screenRain: ScreenRain | null = null;
 let campaign: CampaignRules | null = null;
 let combat: P0Combat | null = null;
 let viewmodel: ViewmodelRig | null = null;
+let crosshair: Crosshair | null = null;
 const beacons = new Map<string, { el: HTMLDivElement; label: string; z: number }>();
 const _beaconWorld = new THREE.Vector3();
 const _beaconCam = new THREE.Vector3();
@@ -262,7 +264,9 @@ async function boot() {
     campaign = new CampaignRules();
     combat = new P0Combat(scene, level, campaign, player);
     viewmodel = new ViewmodelRig(campaign);
-    (window as unknown as { __P0_DEBUG?: unknown }).__P0_DEBUG = { level, scene, player, snapObjectToTerrain, THREE, debug, predictGroundDelta, campaign, combat, viewmodel };
+    crosshair = new Crosshair(crossCanvas);
+    crosshair.setHidden(true);
+    (window as unknown as { __P0_DEBUG?: unknown }).__P0_DEBUG = { level, scene, player, snapObjectToTerrain, THREE, debug, predictGroundDelta, campaign, combat, viewmodel, crosshair };
 
     for (const obj of level.objectives) {
       const el = document.createElement('div');
@@ -314,6 +318,13 @@ async function boot() {
       if (lightning && !lightningOn) SFX.thunder(1.35);
       lightningOn = lightning;
       SFX.update(dt);
+      if (crosshair && controlsEnabled && introState === 'done' && !completed) {
+        const pi = player.input;
+        const moving = pi.forward || pi.back || pi.left || pi.right;
+        const speed = moving ? (pi.sprint ? 4.95 : 3.3) : 0;
+        const baseSpread = campaign?.primary ? 0.0018 : 0.0022;
+        crosshair.update(dt, speed, baseSpread, false);
+      }
       renderer.render(scene, player.camera);
       if (viewmodel) {
         viewmodel.root.visible = controlsEnabled && !completed && !cutscene && introState === 'done';
@@ -350,7 +361,7 @@ introOverlay.addEventListener('click', () => {
 
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === canvas;
-  crosshair.classList.toggle('on', locked && controlsEnabled && !debug?.active);
+  crosshair?.setHidden(!locked || !controlsEnabled || !!debug?.active);
   if (locked) {
     hint.classList.remove('on');
   } else if (controlsEnabled && !cutscene && !completed && !debug?.active) {
@@ -370,7 +381,10 @@ document.addEventListener('mousedown', (event) => {
   if (event.button !== 0) return;
   if (debug?.active || cutscene || completed || !controlsEnabled) return;
   if (document.pointerLockElement !== canvas) return;
-  if (combat?.shoot(player.camera)) viewmodel?.punch();
+  if (combat?.shoot(player.camera)) {
+    viewmodel?.punch();
+    crosshair?.onFire();
+  }
 });
 
 addEventListener('wheel', (event) => {
@@ -455,6 +469,18 @@ addEventListener('keyup', (event) => {
   if (event.code === 'Space') player.input.jump = false;
 });
 
+addEventListener('blur', () => {
+  keys.clear();
+  player.input.jump = false;
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    keys.clear();
+    player.input.jump = false;
+  }
+});
+
 addEventListener('resize', () => {
   if (!renderer) return;
   renderer.setSize(innerWidth, innerHeight);
@@ -462,6 +488,7 @@ addEventListener('resize', () => {
   player?.resize();
   screenRain?.resize();
   viewmodel?.resize();
+  crosshair?.layout();
 });
 
 document.getElementById('restartBtn')?.addEventListener('click', () => location.reload());

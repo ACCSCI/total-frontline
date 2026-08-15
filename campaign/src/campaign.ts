@@ -3,24 +3,52 @@ import type { P0Level } from './level';
 import type { FirstPersonPlayer } from './player';
 import { buildSoldierModel, type SoldierRig } from './soldier';
 import { SFX } from './sfx';
+import weaponsData from '../../shared/weapons.json';
+import loadoutData from '../../shared/loadout.json';
+import missionsData from '../../shared/missions.json';
 
 export interface WeaponDef {
   id: string;
   name: string;
   magSize: number;
   reserve: number;
+  maxReserve: number;
   damage: number;
+  pellets: number;
+  rpm: number;
+  auto: boolean;
 }
 
-export const PRIMARY_WEAPONS: Record<string, WeaponDef> = {
-  m4: { id: 'm4', name: 'M4 卡宾枪', magSize: 30, reserve: 90, damage: 31 },
-  ks12: { id: 'ks12', name: 'KS-12 霰弹枪', magSize: 8, reserve: 32, damage: 75 },
-  ak12: { id: 'ak12', name: 'AK-12M 突击步枪', magSize: 30, reserve: 120, damage: 36 },
-  sr7: { id: 'sr7', name: 'SR-7 狙击枪', magSize: 5, reserve: 20, damage: 125 },
-  p90: { id: 'p90', name: 'P90 单兵自卫武器', magSize: 50, reserve: 150, damage: 24 },
-};
+const rawWeapons = weaponsData.weapons as Record<
+  string,
+  {
+    id: string;
+    name: string;
+    magSize: number;
+    reserve: number;
+    maxReserve: number;
+    damage: number;
+    pellets: number;
+    rpm: number;
+    auto: boolean;
+    campaignReserve?: number;
+  }
+>;
 
-export const PISTOL_WEAPON: WeaponDef = { id: 'p9', name: 'P-9 手枪', magSize: 15, reserve: 45, damage: 35 };
+export const PRIMARY_WEAPONS: Record<string, WeaponDef> = {};
+for (const [id, w] of Object.entries(rawWeapons)) {
+  PRIMARY_WEAPONS[id] = {
+    id,
+    name: w.name,
+    magSize: w.magSize,
+    reserve: w.campaignReserve ?? w.reserve,
+    maxReserve: w.maxReserve,
+    damage: w.damage * w.pellets,
+    pellets: w.pellets,
+    rpm: w.rpm,
+    auto: w.auto,
+  };
+}
 
 interface CarriedWeapon {
   def: WeaponDef;
@@ -60,9 +88,9 @@ export class CampaignRules {
   slots: [CarriedWeapon | null, CarriedWeapon | null];
   activeSlot = 0;
   playerHealth = 100;
-  tacticals = 1;
-  lethals = 1;
-  readonly maxThrowables = 3;
+  tacticals = loadoutData.campaign.throwables.tactical.start;
+  lethals = loadoutData.campaign.throwables.lethal.start;
+  readonly maxThrowables = loadoutData.campaign.throwables.lethal.max;
 
   constructor() {
     const m4 = PRIMARY_WEAPONS.m4;
@@ -215,18 +243,12 @@ export class P0Combat {
   }
 
   private spawnPickups() {
-    /* weapon pickups along the linear corridor */
-    this.addPickup('weapon', 'ks12', new THREE.Vector3(5.5, 0, 36));
-    this.addPickup('weapon', 'ak12', new THREE.Vector3(-4.5, 0, 4));
-    this.addPickup('weapon', 'sr7', new THREE.Vector3(6.5, 0, -20));
-    this.addPickup('weapon', 'p90', new THREE.Vector3(3.5, 0, -62));
-
-    /* ammo supply points per the mission spec */
-    this.addPickup('ammo', undefined, new THREE.Vector3(-5.5, 0, 68), '弹药补给');
-    this.addPickup('ammo', undefined, new THREE.Vector3(4.0, 0, 44), '弹药补给');
-    this.addPickup('ammo', undefined, new THREE.Vector3(6.5, 0, 20), '弹药补给');
-    this.addPickup('ammo', undefined, new THREE.Vector3(-3.5, 0, -46), '弹药补给');
-    this.addPickup('ammo', undefined, new THREE.Vector3(-6.0, 0, -78), '弹药补给');
+    for (const p of missionsData.mission01.weaponPickups) {
+      this.addPickup('weapon', p.weapon, new THREE.Vector3(p.x, 0, p.z));
+    }
+    for (const p of missionsData.mission01.ammoPickups) {
+      this.addPickup('ammo', undefined, new THREE.Vector3(p.x, 0, p.z), '弹药补给');
+    }
   }
 
   private addPickup(kind: Pickup['kind'], weaponId: string | undefined, pos: THREE.Vector3, labelOverride?: string) {
@@ -241,14 +263,7 @@ export class P0Combat {
   }
 
   private spawnEnemies() {
-    const positions = [
-      new THREE.Vector3(6, 0, 50),
-      new THREE.Vector3(-7, 0, 30),
-      new THREE.Vector3(5, 0, 10),
-      new THREE.Vector3(-5, 0, -10),
-      new THREE.Vector3(7, 0, -34),
-      new THREE.Vector3(-6, 0, -58),
-    ];
+    const positions = missionsData.mission01.enemyPositions.map((p) => new THREE.Vector3(p.x, 0, p.z));
     for (const pos of positions) {
       const root = new THREE.Group();
       const soldier = buildSoldierModel();
@@ -331,8 +346,9 @@ export class P0Combat {
     const y = this.level.groundY(x, z);
     /* ammo drop is picked up automatically; weapon drop is swappable with F */
     this.addPickup('ammo', undefined, new THREE.Vector3(x, 0, z), '敌人弹药');
-    if (Math.random() < 0.55) {
-      const id = Math.random() < 0.7 ? 'ak12' : 'p90';
+    if (Math.random() < loadoutData.campaign.enemyDrop.weaponChance) {
+      const pool = loadoutData.campaign.enemyDrop.weaponPool;
+      const id = pool[Math.floor(Math.random() * pool.length)];
       this.addPickup('lootWeapon', id, new THREE.Vector3(x + 0.8, 0, z), `${PRIMARY_WEAPONS[id].name} — F 拾取`);
     }
     void y;
@@ -405,12 +421,12 @@ export class P0Combat {
       p.root.rotation.y += dt * 0.8;
       const d = Math.hypot(p.root.position.x - playerPos.x, p.root.position.z - playerPos.z);
       if (p.kind === 'ammo' && d < 2.2 && p.coolUntil <= now) {
-        this.rules.addAmmo(60);
-        p.coolUntil = now + 15000;
+        this.rules.addAmmo(loadoutData.campaign.ammoPickup.amount);
+        p.coolUntil = now + loadoutData.campaign.ammoPickup.cooldownMs;
         p.root.visible = false;
         setTimeout(() => {
           p.root.visible = true;
-        }, 15000);
+        }, loadoutData.campaign.ammoPickup.cooldownMs);
         this.showPrompt('已拾取弹药补给 · 投掷物 +1', 1.6);
       }
     }

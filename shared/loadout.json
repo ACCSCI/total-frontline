@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "campaign": {
+    "killstreaksEnabled": false,
+    "primaryWeaponSlots": 2,
+    "throwables": {
+      "tactical": { "key": "q", "name": "闪光弹", "max": 3, "start": 1 },
+      "lethal": { "key": "g", "name": "破片手雷", "max": 3, "start": 1 }
+    },
+    "enemyDrop": {
+      "ammoAmount": 60,
+      "weaponChance": 0.55,
+      "weaponPool": ["ak12", "p90"]
+    },
+    "ammoPickup": {
+      "amount": 60,
+      "cooldownMs": 15000
+    }
+  }
+}

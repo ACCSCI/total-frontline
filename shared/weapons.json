@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "weapons": {
+    "m4": {
+      "id": "m4",
+      "legacyId": "rifle",
+      "name": "M4 卡宾枪",
+      "magSize": 30,
+      "reserve": 210,
+      "maxReserve": 210,
+      "damage": 31,
+      "pellets": 1,
+      "rpm": 760,
+      "auto": true,
+      "campaignReserve": 90
+    },
+    "ks12": {
+      "id": "ks12",
+      "legacyId": "shotgun",
+      "name": "KS-12 霰弹枪",
+      "magSize": 8,
+      "reserve": 48,
+      "maxReserve": 48,
+      "damage": 15,
+      "pellets": 9,
+      "rpm": 999,
+      "auto": false,
+      "campaignReserve": 32
+    },
+    "p9": {
+      "id": "p9",
+      "legacyId": "pistol",
+      "name": "P-9 手枪",
+      "magSize": 15,
+      "reserve": 90,
+      "maxReserve": 90,
+      "damage": 35,
+      "pellets": 1,
+      "rpm": 430,
+      "auto": false,
+      "campaignReserve": 45
+    },
+    "sr7": {
+      "id": "sr7",
+      "legacyId": "sniper",
+      "name": "SR-7 狙击枪",
+      "magSize": 5,
+      "reserve": 25,
+      "maxReserve": 25,
+      "damage": 125,
+      "pellets": 1,
+      "rpm": 999,
+      "auto": false,
+      "campaignReserve": 20
+    },
+    "ak12": {
+      "id": "ak12",
+      "legacyId": "ak",
+      "name": "AK-12M 突击步枪",
+      "magSize": 30,
+      "reserve": 180,
+      "maxReserve": 240,
+      "damage": 36,
+      "pellets": 1,
+      "rpm": 680,
+      "auto": true,
+      "campaignReserve": 120
+    },
+    "p90": {
+      "id": "p90",
+      "legacyId": "p90",
+      "name": "P90 单兵自卫武器",
+      "magSize": 50,
+      "reserve": 200,
+      "maxReserve": 250,
+      "damage": 24,
+      "pellets": 1,
+      "rpm": 900,
+      "auto": true,
+      "campaignReserve": 150
+    }
+  }
+}

@@ -137,31 +137,19 @@ body {
   text-shadow: 0 1px 8px #000;
 }
 
-#crosshair {
+#cross {
   position: fixed;
   left: 50%;
   top: 50%;
   z-index: 2;
   pointer-events: none;
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+
+#cross.hidden {
   opacity: 0;
 }
-
-#crosshair.on {
-  opacity: 1;
-}
-
-#crosshair .ch {
-  position: absolute;
-  display: block;
-  background: rgba(220, 238, 248, 0.9);
-  box-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
-}
-
-#crosshair .cht { left: -1px; top: -8px; width: 2px; height: 5px; }
-#crosshair .chb { left: -1px; top: 3px; width: 2px; height: 5px; }
-#crosshair .chl { left: -8px; top: -1px; width: 5px; height: 2px; }
-#crosshair .chr { left: 3px; top: -1px; width: 5px; height: 2px; }
-#crosshair .chDot { left: -1px; top: -1px; width: 2px; height: 2px; border-radius: 50%; }
 
 #hint {
   position: absolute;

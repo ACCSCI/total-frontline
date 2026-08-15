@@ -37,6 +37,7 @@
     "src/16-viewmodels-b.ts",
     "src/16a-viewmodel-ak.ts",
     "src/16b-viewmodels-smg.ts",
+    "src/generated-weapons.ts",
     "src/17-weapons.ts",
     "src/17a-attachments.ts",
     "src/18-enemies.ts",
