@@ -55,6 +55,36 @@ const state = await page.evaluate(() => {
   };
 });
 
+const rules = await page.evaluate(() => {
+  const d = window.__P0_DEBUG;
+  const campaign = d.campaign;
+  const combat = d.combat;
+  const player = d.player;
+  const before = campaign.slots.map((s) => s?.def.id || null);
+  player.position.set(5.5, 0, 36);
+  combat.update(0.1, player.position, player.camera);
+  const swapped = combat.tryInteractWeapon(player.position);
+  const after = campaign.slots.map((s) => s?.def.id || null);
+  const throwBefore = [campaign.tacticals, campaign.lethals];
+  combat.throwGrenade('tactical', player.camera);
+  combat.throwGrenade('lethal', player.camera);
+  const throwAfter = [campaign.tacticals, campaign.lethals];
+  return {
+    slotCount: campaign.slots.length,
+    before,
+    swapped,
+    after,
+    throwMax: campaign.maxThrowables,
+    throwBefore,
+    throwAfter,
+    pickups: combat.pickups.length,
+    enemies: combat.enemies.length,
+    hasViewmodel: !!d.viewmodel,
+    hasCrosshair: !!d.crosshair,
+    hasKillstreakUi: !!document.getElementById('streakDock'),
+  };
+});
+
 /* Rough fps probe. */
 const fps = await page.evaluate(
   () =>
@@ -72,7 +102,18 @@ const fps = await page.evaluate(
 
 await page.screenshot({ path: `${outDir}/p0-smoke.png` });
 
-console.log(JSON.stringify({ state, fps, errors }, null, 2));
+const failures = [];
+if (rules.slotCount !== 2) failures.push('campaign must have exactly two weapon slots');
+if (!rules.swapped || rules.after[0] !== 'ks12') failures.push('F weapon swap failed');
+if (rules.throwMax !== 3) failures.push('throwable cap is not 3');
+if (rules.throwBefore[0] !== 1 || rules.throwBefore[1] !== 1) failures.push('starting throwables are not 1/1');
+if (rules.throwAfter[0] !== 0 || rules.throwAfter[1] !== 0) failures.push('Q/G did not consume throwables');
+if (rules.pickups < 9) failures.push('mission pickups missing');
+if (rules.enemies < 6) failures.push('enemies missing');
+if (!rules.hasViewmodel || !rules.hasCrosshair) failures.push('viewmodel/crosshair missing');
+if (rules.hasKillstreakUi) failures.push('campaign exposes killstreak UI');
+
+console.log(JSON.stringify({ state, rules, fps, errors, failures }, null, 2));
 await browser.close();
 
-if (errors.length || !state.badge || !state.asset.includes('程序化')) process.exitCode = 1;
+if (errors.length || failures.length || !state.badge || !state.asset.includes('程序化')) process.exitCode = 1;
