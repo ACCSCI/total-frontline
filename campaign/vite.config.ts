@@ -3,6 +3,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   base: './',
   build: {
+    outDir: '../dist/campaign',
+    emptyOutDir: true,
     target: 'es2022',
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 2500,
