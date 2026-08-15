@@ -7,7 +7,9 @@
 <meta name="description" content="《全面战线》是一款无需安装、打开浏览器即可投入战斗的完整 3D 第一人称射击游戏。">
 <meta name="author" content="Prasenjit">
 <meta name="theme-color" content="#0a0c0e">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230a0c0e'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%23ffb340' stroke-width='4'/%3E%3Cpath d='M32 5v16M32 43v16M5 32h16M43 32h16' stroke='%23ffb340' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23ff3b30'/%3E%3C/svg%3E">
 <link rel="canonical" href="https://starknightt.github.io/operation-ironhold/">
+<link rel="stylesheet" href="assets/menu.css">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="全面战线">
@@ -59,6 +61,8 @@
      Placement comes from JS so the canvas centre rounds to a whole pixel too. */
   #cross{position:absolute;pointer-events:none;}
   #cross.hidden{opacity:0;}
+  #stance{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);padding:5px 9px;border-bottom:2px solid rgba(223,230,236,.28);background:rgba(5,8,11,.48);font-size:9px;font-weight:700;letter-spacing:.18em;color:rgba(223,230,236,.58);text-shadow:0 1px 4px #000;}
+  #stance.crouch{border-color:#ffb340;color:#ffd38a;} #stance.prone{border-color:#7ee081;color:#a7efaa;}
 
   /* ---- sniper scope ---- */
   #scope{position:absolute;inset:0;opacity:0;pointer-events:none;}
@@ -182,8 +186,9 @@
   @keyframes cmin{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
   .cm.out{opacity:0;transition:opacity .5s linear;}
 
-  /* killstreak dock, left side above the comms */
+  /* killstreak dock, left side above the comms — hidden in campaign */
   #streakDock{position:absolute;left:26px;top:248px;display:flex;flex-direction:column;gap:5px;align-items:flex-start;}
+  body.campaign #streakDock, body.campaign #streakPop, body.campaign #streakLine{display:none;}
   .sk{display:flex;align-items:center;gap:8px;padding:5px 11px;font-size:10.5px;letter-spacing:.16em;font-weight:700;
     color:#fff;border-left:2px solid var(--amber);background:rgba(255,179,64,.10);animation:kfin .22s ease-out;}
   .sk b{font-size:9.5px;color:var(--amber);border:1px solid rgba(255,179,64,.55);padding:1px 5px;font-weight:800;}
@@ -199,6 +204,7 @@
   #timer.warn{color:var(--red);animation:bl 1s steps(1,end) infinite;}
   #objective{font-size:10px;letter-spacing:.26em;color:rgba(223,230,236,.55);margin-top:5px;font-weight:600;}
   #objective b{color:var(--amber);font-size:12px;}
+  #missionObj{font-size:10px;letter-spacing:.2em;color:rgba(255,179,64,.88);margin-top:4px;font-weight:700;text-shadow:0 1px 6px #000;}
   /* killstreak banner + status line */
   #streakPop{font-size:16px;font-weight:800;letter-spacing:.3em;color:var(--amber);margin-top:7px;
     opacity:0;transform:scale(.82);transition:all .18s ease-out;
@@ -230,6 +236,17 @@
   .ghTarget.occluded::before{transform:translate(-50%,-50%) rotate(45deg);}
   .ghTarget.occluded::after{transform:translate(-50%,-50%) rotate(-45deg);}
   .ghTarget.occluded > span::after{content:" // 建筑遮挡";}
+  #gunshipSelf{position:absolute;display:none;width:34px;height:54px;box-sizing:border-box;
+    border:2px solid #49a8ff;transform:translate(-50%,-50%);filter:drop-shadow(0 0 4px #087cdc);}
+  #gunshipSelf::before,#gunshipSelf::after{content:"";position:absolute;background:#62b7ff;}
+  #gunshipSelf::before{left:50%;top:-8px;width:2px;height:68px;transform:translateX(-50%);}
+  #gunshipSelf::after{left:-8px;top:50%;width:48px;height:2px;transform:translateY(-50%);}
+  #gunshipSelf > span{position:absolute;left:-2px;bottom:100%;padding:1px 4px;background:rgba(0,30,66,.82);
+    color:#80c8ff;font-size:8px;font-weight:800;letter-spacing:.14em;white-space:nowrap;}
+  #gunshipSelf.dead{border-color:#9aa7b2;filter:drop-shadow(0 0 3px #222);}
+  #gunshipSelf.dead > span{color:#d1d8de;background:rgba(25,28,31,.85);}
+  #gunshipSelf.edge{width:26px;height:26px;transform:translate(-50%,-50%) rotate(45deg);}
+  #gunshipSelf.edge > span{transform:rotate(-45deg);transform-origin:left bottom;}
   #gunshipHud .ghWeapons{position:absolute;right:28px;bottom:28px;width:240px;display:grid;gap:5px;}
   .ghWeapon{padding:7px 10px;border-left:2px solid rgba(220,245,220,.28);background:rgba(5,12,7,.45);
     display:flex;justify-content:space-between;font-size:11px;letter-spacing:.12em;}
@@ -279,59 +296,9 @@
   .screen::after{content:"";position:absolute;inset:0;pointer-events:none;
     background:repeating-linear-gradient(0deg,rgba(255,255,255,.024) 0 1px,transparent 1px 3px);}
 
-  /* the menu runs over a live camera move, so the scrim only darkens the side
-     the text sits on and leaves the yard readable on the right */
-  #startScreen{
-    cursor:pointer;align-items:flex-start;justify-content:center;
-    padding:clamp(14px,3.5vh,40px) clamp(28px,7vw,110px);
-    background:
-      linear-gradient(180deg,rgba(3,5,7,.78) 0%,rgba(3,5,7,0) 26%,rgba(3,5,7,0) 82%,rgba(3,5,7,.55) 100%),
-      linear-gradient(95deg,rgba(4,6,9,.94) 0%,rgba(4,6,9,.86) 30%,rgba(4,6,9,.48) 56%,rgba(4,6,9,.16) 80%,rgba(4,6,9,.28) 100%);
-  }
-  #startScreen .col{display:flex;flex-direction:column;align-items:flex-start;
-    width:min(600px,62vw);max-height:100%;position:relative;z-index:1;}
-  #startScreen .title,#startScreen .eyebrow{text-align:left;}
-  #startScreen .rule{margin:clamp(10px,2.6vh,26px) 0 clamp(10px,2.4vh,24px);}
-  .eyebrow{font-size:11px;letter-spacing:.55em;color:var(--amber);font-weight:700;
-    margin-bottom:clamp(6px,1.4vh,14px);}
-  /* type is clamped against height as well as width: on a short, wide window a
-     purely vw-driven title grows until the panel runs off both ends of the screen */
-  .title{font-size:clamp(32px,min(7.4vw,12vh),86px);font-weight:800;letter-spacing:.03em;line-height:.92;text-align:center;
-    background:linear-gradient(180deg,#fff 20%,#7d8996 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
-    text-shadow:0 10px 40px rgba(0,0,0,.6);}
-  .title small{display:block;font-size:.26em;letter-spacing:.44em;font-weight:600;color:var(--amber);
-    -webkit-text-fill-color:var(--amber);margin-top:clamp(7px,1.6vh,16px);}
-  .rule{width:min(560px,74vw);height:1px;background:linear-gradient(90deg,rgba(255,179,64,.75),transparent);
-    margin:clamp(11px,2.8vh,28px) 0;}
-  /* fixed key column so every label starts on the same x */
-  .keys{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(3px,.9vh,7px) 30px;width:100%;}
-  .key{display:grid;grid-template-columns:96px 1fr;align-items:center;gap:11px;
-    font-size:10.5px;letter-spacing:.14em;color:rgba(223,230,236,.58);}
-  .key kbd{font-family:inherit;font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:4px 0;text-align:center;
-    background:rgba(223,230,236,.06);border:1px solid rgba(223,230,236,.18);border-bottom-width:2px;color:#e8eef3;
-    white-space:nowrap;}
-  /* map selection cards */
-  .maps{display:flex;gap:14px;width:100%;}
-  .mapCard{flex:1;cursor:pointer;padding:clamp(10px,2vh,18px) clamp(12px,1.6vw,20px);
-    background:rgba(8,11,15,.55);border:1px solid rgba(223,230,236,.16);border-bottom-width:2px;transition:all .18s;}
-  .mapCard:hover{border-color:rgba(255,179,64,.7);background:rgba(255,179,64,.07);
-    box-shadow:0 0 30px rgba(255,179,64,.12);}
-  .mapCard .mk{font-size:9px;letter-spacing:.3em;color:var(--amber);font-weight:700;}
-  .mapCard .mn{font-size:clamp(17px,2.2vw,24px);font-weight:800;letter-spacing:.06em;margin-top:6px;color:#fff;}
-  .mapCard .md{font-size:9.5px;letter-spacing:.14em;color:rgba(223,230,236,.5);margin-top:7px;line-height:1.7;}
-  .mapCard .go{font-size:10px;letter-spacing:.34em;font-weight:700;color:rgba(255,179,64,.55);margin-top:10px;transition:color .18s;}
-  .mapCard:hover .go{color:#fff;}
-  .cta{margin-top:clamp(14px,3.4vh,34px);font-size:14px;letter-spacing:.42em;font-weight:700;color:#fff;
-    padding:clamp(10px,1.5vh,15px) 40px;border:1px solid rgba(255,179,64,.5);background:rgba(255,179,64,.08);
-    animation:pulse 2.1s ease-in-out infinite;}
-  @keyframes pulse{0%,100%{box-shadow:0 0 0 rgba(255,179,64,0);background:rgba(255,179,64,.06)}
-                   50%{box-shadow:0 0 34px rgba(255,179,64,.22);background:rgba(255,179,64,.14)}}
-  .hint{margin-top:clamp(7px,1.5vh,15px);font-size:10px;letter-spacing:.2em;color:rgba(223,230,236,.34);}
-  /* corner slugs sell the frame as a screen rather than a web page */
   .slug{position:absolute;font-size:9px;letter-spacing:.28em;color:rgba(223,230,236,.26);z-index:1;}
   .slug.tl{top:26px;left:30px;} .slug.tr{top:26px;right:30px;text-align:right;}
   .slug.br{bottom:24px;right:30px;text-align:right;}
-  .slug b{color:rgba(255,179,64,.6);font-weight:700;}
 
   #endScreen .title{font-size:clamp(34px,6vw,68px);}
   #endScreen.win .title{background:linear-gradient(180deg,#fff,#ffb340);-webkit-background-clip:text;background-clip:text;}
@@ -366,6 +333,9 @@
   #pause.on{display:flex;}
   #pause .t{font-size:34px;font-weight:800;letter-spacing:.3em;}
   #pause .s{font-size:11px;letter-spacing:.3em;color:rgba(223,230,236,.5);margin-top:12px;}
+  #pause .setting{pointer-events:auto;display:flex;align-items:center;gap:12px;margin-top:24px;padding:10px 14px;
+    border:1px solid rgba(223,230,236,.2);background:rgba(223,230,236,.05);font-size:10px;letter-spacing:.16em;color:#dfe6ec;}
+  #pause .setting input{accent-color:#ffb340;width:16px;height:16px;cursor:pointer;}
 
   #boot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:30;background:#05070a;
     font-size:11px;letter-spacing:.35em;color:rgba(223,230,236,.4);}
@@ -377,6 +347,7 @@
 <body>
 
 <canvas id="c"></canvas>
+<canvas id="menuGpu" aria-hidden="true"></canvas>
 
 <div id="hud">
   <div id="lowhp"></div>
@@ -393,7 +364,7 @@
 
   <div id="gunshipHud">
     <div class="ghTop"><span>空中炮艇 // 火控系统</span><span id="gunshipTime">25.0 秒</span></div>
-    <div id="gunshipTargets" aria-hidden="true"></div>
+    <div id="gunshipTargets" aria-hidden="true"><div id="gunshipSelf"><span>己方操作员</span></div></div>
     <div class="ghRet"></div>
     <div class="ghWeapons">
       <div class="ghWeapon on" data-gun="0"><span>1　25 毫米机炮</span><b>就绪</b></div>
@@ -404,6 +375,7 @@
   </div>
 
   <canvas id="cross"></canvas>
+  <div id="stance">站姿 // ALT 蹲下 · Z 卧倒</div>
   <div id="hitmark"><i></i><i></i><i></i><i></i></div>
   <div id="dmgDirs"></div>
 
@@ -428,6 +400,7 @@
   <div id="top">
     <div id="timer" class="mono">10:00</div>
     <div id="objective"><b id="killCount">0</b> 已消灭</div>
+    <div id="missionObj" hidden></div>
     <div id="streakPop"></div>
     <div id="streakLine"></div>
   </div>
@@ -454,6 +427,9 @@
     <div class="slot" data-slot="2"><b>3</b><span>P-9 手枪</span></div>
     <div class="slot" data-slot="3"><b>4</b><span>SR-7 狙击枪</span></div>
     <div class="slot" data-slot="4"><b>5</b><span>SAW-250 机枪</span></div>
+    <div class="slot" data-slot="5"><b>6</b><span>AK-12M 突击步枪</span></div>
+    <div class="slot" data-slot="6"><b>7</b><span>KRISS Vector 冲锋枪</span></div>
+    <div class="slot" data-slot="7"><b>8</b><span>P90 单兵自卫武器</span></div>
   </div>
 
   <div id="ammo">
@@ -465,45 +441,64 @@
   </div>
 </div>
 
-<div id="pause"><div class="t">已暂停</div><div class="s">点击继续</div><button class="btn ghost" id="quitBtn">返回主菜单</button></div>
+<div id="pause"><div class="t">已暂停</div><div class="s">点击空白区域继续</div><label class="setting" id="sprintReloadSettingWrap"><input id="sprintReloadSetting" type="checkbox">疾跑打断换弹</label><button class="btn ghost" id="quitBtn">返回主菜单</button></div>
 
 <div class="screen" id="startScreen">
   <div class="slug tl">全面战线 // 主菜单</div>
-  <div class="slug tr">前线特遣队<br>选择作战地图</div>
-  <div class="slug br">10 分钟死斗 · 阵亡可重生</div>
+  <div class="slug tr">前线特遣队<br><span id="menuContext">作战终端</span></div>
+  <div class="slug br">WEBGPU 战术界面 · 实时渲染</div>
   <div class="col">
     <div class="eyebrow">机密 // 前线特遣队</div>
-    <div class="title">全面<br>战线<small>TOTAL FRONTLINE — 选择作战地图</small></div>
+    <div class="title">全面<br>战线<small id="menuSubtitle">TOTAL FRONTLINE — 作战终端</small></div>
     <div class="rule"></div>
-    <div class="maps">
-      <div class="mapCard" data-map="yard">
-        <div class="mk">行动 01 — 第 7 区</div>
-        <div class="mn">仓库区</div>
-        <div class="md">集装箱堆场 04 · 网格 118-042<br>10 分钟死斗 · 阵亡可重生</div>
-        <div class="go">出击 ▸</div>
+    <nav id="mainMenuNav" aria-label="主菜单">
+      <button class="menuEntry" type="button" data-menu-target="singleMenu"><span class="code">01 // SOLO</span><strong>单人模式</strong><small>选择战区并投入 6 对 6 死亡竞赛</small></button>
+      <button class="menuEntry" type="button" data-menu-target="loadoutMenu"><span class="code">02 // LOADOUT</span><strong>武器配置</strong><small>配置主武器瞄具、枪口、握把与弹匣</small></button>
+      <button class="menuEntry" type="button" data-menu-target="settingsMenu"><span class="code">03 // SYSTEM</span><strong>全局设置</strong><small>灵敏度、视野、音量与操作偏好</small></button>
+      <button class="menuEntry" type="button" data-menu-target="campaignMenu"><span class="code">04 // CAMPAIGN</span><strong>单人战役</strong><small>「鹰落」— 黑森林河谷救援行动</small><span class="badge">1 任务</span></button>
+    </nav>
+    <div id="menuOverview"><span>ESC 返回上一级</span><span id="menuRendererState">WEBGPU 检测中</span></div>
+
+    <section class="menuPage" id="singleMenu" hidden aria-labelledby="singleMenuTitle">
+      <div class="menuPageHead"><button class="menuBack" type="button">‹ 返回</button><div><span>DEPLOYMENT / 6 VS 6</span><h2 id="singleMenuTitle">单人模式</h2></div></div>
+      <div class="maps">
+        <button type="button" class="mapCard" data-map="yard"><span class="mk">行动 01 — 第 7 区</span><span class="mn">仓库区</span><span class="md">集装箱堆场 04 · 网格 118-042<br>10 分钟死斗 · 阵亡可重生</span><span class="go">出击 ▸</span></button>
+        <button type="button" class="mapCard" data-map="nuke"><span class="mk">行动 02 — 内华达试验场</span><span class="mn">核弹小镇</span><span class="md">12 号环岛 · 宜居示范镇<br>10 分钟死斗 · 阵亡可重生</span><span class="go">出击 ▸</span></button>
       </div>
-      <div class="mapCard" data-map="nuke">
-        <div class="mk">行动 02 — 内华达试验场</div>
-        <div class="mn">核弹小镇</div>
-        <div class="md">12 号环岛 · 宜居示范镇<br>10 分钟死斗 · 阵亡可重生</div>
-        <div class="go">出击 ▸</div>
+      <div class="hint">悬停预览 · 点击出击 · 阵亡后 3 秒重新部署</div>
+    </section>
+
+    <section class="menuPage" id="loadoutMenu" hidden aria-labelledby="loadoutMenuTitle">
+      <div class="menuPageHead"><button class="menuBack" type="button">‹ 返回</button><div><span>ARMORY / ATTACHMENTS</span><h2 id="loadoutMenuTitle">武器配置</h2></div></div>
+      <div id="attachmentPanel">
+        <div class="ah">主武器 <select id="attachmentWeapon"><option value="ak">AK-12M</option><option value="rifle">M4 卡宾枪</option></select></div>
+        <div class="attachRows">
+          <div class="attachSlot"><em>瞄具</em><button data-attachment="optic:micro_dot">战术红点</button><button data-attachment="optic:holo">方窗全息</button><button data-attachment="optic:prism_2_5">2.5× 棱镜镜</button></div>
+          <div class="attachSlot"><em>枪口</em><button data-attachment="muzzle:compensator">战术制退器</button><button data-attachment="muzzle:suppressor">快拆消音器</button></div>
+          <div class="attachSlot"><em>下挂</em><button data-attachment="underbarrel:angled_grip">斜角握把</button><button data-attachment="underbarrel:vertical_grip">垂直握把</button></div>
+          <div class="attachSlot"><em>弹匣</em><button data-attachment="magazine:standard">标准弹匣</button><button data-attachment="magazine:extended">扩容弹匣</button></div>
+        </div>
+        <div id="attachmentStatus" aria-live="polite"></div>
       </div>
-    </div>
-    <div class="keys">
-      <div class="key"><kbd>W A S D</kbd> <span>移动</span></div>
-      <div class="key"><kbd>鼠标</kbd> <span>视角</span></div>
-      <div class="key"><kbd>左键</kbd> <span>开火</span></div>
-      <div class="key"><kbd>右键</kbd> <span>机瞄</span></div>
-      <div class="key"><kbd>SHIFT</kbd> <span>冲刺 · 屏息</span></div>
-      <div class="key"><kbd>空格</kbd> <span>跳跃 · 二段 · 翻越</span></div>
-      <div class="key"><kbd>CTRL</kbd> <span>蹲下</span></div>
-      <div class="key"><kbd>R</kbd> <span>装填</span></div>
-      <div class="key"><kbd>1–5 / 滚轮</kbd> <span>切换武器</span></div>
-      <div class="key"><kbd>6–0</kbd> <span>连杀奖励</span></div>
-      <div class="key"><kbd>V</kbd> <span>射击模式</span></div>
-      <div class="key"><kbd>ESC</kbd> <span>暂停</span></div>
-    </div>
-    <div class="hint">悬停预览 · 点击出击 · 阵亡后 3 秒重新部署 · 连杀奖励就绪后按 6–0 释放</div>
+    </section>
+
+    <section class="menuPage" id="settingsMenu" hidden aria-labelledby="settingsMenuTitle">
+      <div class="menuPageHead"><button class="menuBack" type="button">‹ 返回</button><div><span>GLOBAL / SYSTEM</span><h2 id="settingsMenuTitle">全局设置</h2></div></div>
+      <div class="settingsGrid">
+        <label class="globalSetting"><span>鼠标灵敏度</span><input id="menuSensitivity" type="range" min="0.5" max="2" step="0.05"><output id="menuSensitivityValue"></output></label>
+        <label class="globalSetting"><span>基础视野 FOV</span><input id="menuFov" type="range" min="65" max="95" step="1"><output id="menuFovValue"></output></label>
+        <label class="globalSetting"><span>主音量</span><input id="menuVolume" type="range" min="0" max="100" step="1"><output id="menuVolumeValue"></output></label>
+        <label class="globalSetting check"><span>疾跑打断换弹</span><input id="menuSprintReloadSetting" type="checkbox"></label>
+      </div>
+    </section>
+
+    <section class="menuPage" id="campaignMenu" hidden aria-labelledby="campaignMenuTitle">
+      <div class="menuPageHead"><button class="menuBack" type="button">‹ 返回</button><div><span>STORY OPERATIONS / 01</span><h2 id="campaignMenuTitle">单人战役</h2></div></div>
+      <div class="maps">
+        <button type="button" class="mapCard" id="campaignLaunch"><span class="mk">行动 03 — 斯科拉边境</span><span class="mn">鹰落 · 黑森林河谷</span><span class="md">暴雨夜搜救 VEGA<br>WebGPU 渲染 · 即时演算开场</span><span class="go">进入战役 ▸</span></button>
+      </div>
+      <div class="hint">全新线性任务 · 不提供连杀奖励 · 阵亡回检查点</div>
+    </section>
   </div>
 </div>
 

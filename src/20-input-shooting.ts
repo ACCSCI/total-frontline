@@ -1,43 +1,51 @@
 'use strict';
-/* =========================================================================
-   13. INPUT
-   ========================================================================= */
+/* INPUT */
 const keys = Object.create(null);
+const SETTINGS = {
+  sprintCancelsReload: localStorage.getItem('tf.sprintCancelsReload') !== 'false',
+  mouseSensitivity: clamp(Number(localStorage.getItem('tf.mouseSensitivity')) || 1, 0.5, 2),
+};
 let mouseDX = 0,
   mouseDY = 0;
+let discardLockedMouseMoves = 0;
 const SENS = 0.0022;
 let sensScale = 1; // shrinks with ADS zoom so aim stays 1:1 on screen
 
+function clearLatchedInput() {
+  for (const code of Object.keys(keys)) keys[code] = false;
+  mouseDX = mouseDY = 0;
+  player.spaceEdge = false;
+  player.proneEdge = false;
+  player.triggerHeld = false;
+  player.triggerReleased = true;
+  player.sprint = false;
+  if (G.gunship) G.gunship.trigger = false;
+}
+
+function accumulateMouseInput(dx, dy) {
+  /* Pointer-lock transitions can report a desktop-sized warp. No real hand
+     movement needs hundreds of counts in one DOM event. */
+  mouseDX = clamp(mouseDX + clamp(dx || 0, -90, 90), -180, 180);
+  mouseDY = clamp(mouseDY + clamp(dy || 0, -90, 90), -180, 180);
+}
+
 addEventListener('keydown', (e) => {
   if (e.repeat) {
-    if (
-      ['Space', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'KeyV'].includes(e.code)
-    )
-      e.preventDefault();
+    if (REPEAT_BLOCKED_KEYS.includes(e.code)) e.preventDefault();
     return;
   }
   keys[e.code] = true;
   if (e.code === 'Space') player.spaceEdge = true; // consumed by the jump/mantle step
+  if (e.code === 'KeyZ') player.proneEdge = true;
   if (
-    [
-      'Space',
-      'KeyR',
-      'Digit1',
-      'Digit2',
-      'Digit3',
-      'Digit4',
-      'Digit5',
-      'Digit6',
-      'Digit7',
-      'Digit8',
-      'Digit9',
-      'Digit0',
-      'KeyV',
-      'Tab',
-      'ControlLeft',
-    ].includes(e.code)
-  )
-    e.preventDefault();
+    (e.code === 'ShiftLeft' || e.code === 'ShiftRight') &&
+    SETTINGS.sprintCancelsReload &&
+    player.reloadT > 0 &&
+    keys['KeyW']
+  ) {
+    interruptReload();
+  }
+  if (BLOCKED_GAME_KEYS.includes(e.code)) e.preventDefault();
   if (!G.running) return;
   if (G.gunship?.controlled) {
     if (e.code === 'Digit1') selectGunshipWeapon(0);
@@ -51,13 +59,19 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Digit3') switchWeapon(2);
   if (e.code === 'Digit4') switchWeapon(3);
   if (e.code === 'Digit5') switchWeapon(4);
-  /* killstreaks docked on the left fire on 6–0, in the order they were earned */
-  if (e.code === 'Digit6') activateStreak(0);
-  if (e.code === 'Digit7') activateStreak(1);
-  if (e.code === 'Digit8') activateStreak(2);
-  if (e.code === 'Digit9') activateStreak(3);
-  if (e.code === 'Digit0') activateStreak(4);
-  if (e.code === 'KeyV') {
+    if (e.code === 'Digit6') switchWeapon(5);
+    if (e.code === 'Digit7') switchWeapon(6);
+    if (e.code === 'Digit8') switchWeapon(7);
+  if (killstreaksEnabled()) {
+    if (e.code === 'F1') activateStreak(0);
+    if (e.code === 'F2') activateStreak(1);
+    if (e.code === 'F3') activateStreak(2);
+    if (e.code === 'F4') activateStreak(3);
+    if (e.code === 'F5') activateStreak(4);
+    if (e.code === 'F6') activateStreak(5);
+  }
+  if (e.code === 'KeyV') startMelee();
+  if (e.code === 'KeyB') {
     const w = WEAPONS[player.weapon];
     if (w.semiToggle) {
       w.semi = !w.semi;
@@ -71,8 +85,11 @@ addEventListener('keyup', (e) => {
 });
 addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== document.body) return;
-  mouseDX += e.movementX || 0;
-  mouseDY += e.movementY || 0;
+  if (discardLockedMouseMoves > 0) {
+    discardLockedMouseMoves--;
+    return;
+  }
+  accumulateMouseInput(e.movementX, e.movementY);
 });
 addEventListener('mousedown', (e) => {
   if (!G.running) return;
@@ -80,14 +97,23 @@ addEventListener('mousedown', (e) => {
     if (e.button === 0) G.gunship.trigger = true;
     return;
   }
-  /* Latch the press. A click and release inside one frame — which is most
-     quick taps at 140fps — used to set triggerHeld and clear it again before
-     the update loop ever looked, and the shot simply never happened. The
-     buffer also lets a click land in the last moments of a reload or the
-     cooldown between rounds, so the gun answers the instant it is able. */
   if (e.button === 0) {
+    if (player.sprint) {
+      player.sprint = false;
+      player.sprintFireRaise = WEAPONS[player.weapon].id === 'shotgun' ? 0 : 0.11;
+      keys['ShiftLeft'] = keys['ShiftRight'] = false;
+      const vm = WEAPONS[player.weapon].vm;
+      if (vm) vm._sprintK = 0;
+    }
     player.triggerHeld = true;
     player.clickBuf = 0.12;
+    const w = WEAPONS[player.weapon];
+    /* A pump gun is click-driven, so consume a valid press in this event
+       instead of waiting one requestAnimationFrame. The normal buffer remains
+       for presses during sprint raise/pump recovery. */
+    if (w.id === 'shotgun' && player.sprintFireRaise <= 0 && player.triggerReleased) {
+      if (fireWeapon()) player.clickBuf = 0;
+    }
   }
   if (e.button === 2) {
     e.preventDefault();
@@ -119,6 +145,8 @@ addEventListener('contextmenu', (e) => e.preventDefault());
 
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === document.body;
+  clearLatchedInput();
+  if (locked) discardLockedMouseMoves = 2;
   if (!locked && G.started && !G.over) {
     G.paused = true;
     G.running = false;
@@ -141,12 +169,14 @@ document.addEventListener('pointerlockchange', () => {
     }
   }
 });
+addEventListener('blur', clearLatchedInput);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) clearLatchedInput();
+});
 function requestLock() {
   const p = document.body.requestPointerLock();
   if (p && p.catch) p.catch(() => {});
-  /* a denied request fires no pointerlockchange, which would leave the round
-     live but with no mouse look. fall back to the pause overlay so a second
-     click can try again. */
+  /* Fall back to pause if the browser denies pointer lock. */
   clearTimeout((requestLock as any)._t);
   (requestLock as any)._t = setTimeout(() => {
     if (document.pointerLockElement === document.body) return;
@@ -156,8 +186,7 @@ function requestLock() {
     UI.pause.classList.add('on');
   }, 350);
 }
-/* menu cards: hover previews the map behind the menu, click deploys into it */
-document.querySelectorAll<HTMLElement>('.mapCard').forEach((card) => {
+document.querySelectorAll<HTMLElement>('.mapCard[data-map]:not([data-mission])').forEach((card) => {
   const rec = card.dataset.map === 'nuke' ? MAP_NUKE : MAP_YARD;
   card.addEventListener('mouseenter', () => applyMap(rec));
   card.addEventListener('click', (e) => {
@@ -183,42 +212,12 @@ $('quitBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   showMenu();
 });
-
-/* =========================================================================
-   14. SHOOTING
-   ========================================================================= */
 const shootRay = new THREE.Raycaster();
 shootRay.far = 200;
 const _fwd = new THREE.Vector3(),
   _rgt = new THREE.Vector3(),
   _up = new THREE.Vector3(0, 1, 0);
-const _muzzleWorld = new THREE.Vector3(),
-  _muzzleView = new THREE.Vector3(),
-  _muzzleRayPoint = new THREE.Vector3(),
-  _muzzleRayDir = new THREE.Vector3(),
-  _hitN = new THREE.Vector3();
-const MUZZLE_FORWARD_DEPTH = 0.55;
-
-/** The weapon is rendered by a second camera, so its scene coordinates cannot
- * be copied into the world. Preserve the muzzle's exact screen position and
- * place it a short, safe distance in front of the gameplay camera instead. */
-function placeWorldMuzzleFromViewmodel(muzzle) {
-  muzzle.updateWorldMatrix(true, false);
-  vmCamera.updateMatrixWorld(true);
-  camera.updateMatrixWorld(true);
-
-  muzzle.getWorldPosition(_muzzleView).project(vmCamera);
-  _muzzleRayPoint.set(_muzzleView.x, _muzzleView.y, 0).unproject(camera);
-  _muzzleRayDir.subVectors(_muzzleRayPoint, camera.position).normalize();
-
-  const forwardDot = _muzzleRayDir.dot(_fwd);
-  if (!Number.isFinite(forwardDot) || forwardDot <= 0.05) {
-    return _muzzleWorld.copy(camera.position).addScaledVector(_fwd, MUZZLE_FORWARD_DEPTH);
-  }
-  return _muzzleWorld
-    .copy(camera.position)
-    .addScaledVector(_muzzleRayDir, MUZZLE_FORWARD_DEPTH / forwardDot);
-}
+const _hitN = new THREE.Vector3();
 
 function currentSpreadMult() {
   const w = WEAPONS[player.weapon];
@@ -226,12 +225,15 @@ function currentSpreadMult() {
   let s = w.spread;
   s += (speed / 7) * w.moveSpread;
   if (!player.onGround) s += w.airSpread;
-  if (player.crouch && speed < 0.6) s *= w.crouchMult;
+  s *= stanceSpreadMultiplier(w);
   s *= lerp(1, w.adsSpread, player.adsEase);
   return s;
 }
-
-/* ---- aim down sights ---- */
+function currentRecoilScale(w, adsEase = player.adsEase) {
+  const adsStability = lerp(1, w.adsRecoil ?? 0.62, adsEase);
+  const magnifiedComp = w.attachments?.optic === 'prism_2_5' ? lerp(1, 0.86, adsEase) : 1;
+  return adsStability * magnifiedComp * stanceRecoilMultiplier();
+}
 function setADS(on) {
   if (on === player.ads) return;
   if (on && (player.dead || !G.running)) return;
@@ -244,52 +246,38 @@ function setADS(on) {
 function toggleADS() {
   setADS(!player.ads);
 }
-
 function switchWeapon(i, force?) {
   if (!force && (i < 0 || i >= NORMAL_WEAPON_COUNT || G.jug)) return;
   if (force && (i < 0 || i >= WEAPONS.length)) return;
   if (i === player.weapon && player.switchTo < 0) return;
-  if (player.switching > 0) return;
-  if (player.reloadT > 0) {
-    player.reloadT = 0;
-  }
+  if (player.switching > 0 || player.meleeT > 0) return;
+  if (player.reloadT > 0) interruptReload();
   setADS(false);
   player.boltT = 0;
   player.switchTo = i;
-  player.switching = WEAPONS[i].drawTime + 0.22;
-  player.holsterAt = 0.22;
-  SFX.boltClick();
+  player.holsterAt = 0.14;
+  player.switching = WEAPONS[i].drawTime + player.holsterAt;
+  SFX.weaponSwap(!!WEAPONS[i].heavy);
 }
-function startReload() {
-  const w = WEAPONS[player.weapon];
-  if (w.infiniteAmmo) return;
-  if (player.reloadT > 0 || player.switching > 0 || player.pumpT > 0 || player.boltT > 0) return;
-  if (w.mag >= w.magSize || w.res <= 0) return;
-  setADS(false);
-  player.reloadT = w.reloadTime;
-  player.reloadPhase = 0;
-  SFX.magOut();
-}
-function finishReload() {
-  const w = WEAPONS[player.weapon];
-  const need = w.magSize - w.mag;
-  const take = Math.min(need, w.res);
-  w.mag += take;
-  w.res -= take;
-  w.spread = w.spreadBase;
-  updateAmmoUI();
-}
-
-/** Returns true when the press was consumed — fired or dry-fired — so a
- *  buffered click keeps waiting through a reload instead of being thrown away. */
 function fireWeapon() {
   const w = WEAPONS[player.weapon];
+  if (player.sprint) {
+    player.sprint = false;
+    player.sprintFireRaise = w.id === 'shotgun' ? 0 : 0.11;
+    keys['ShiftLeft'] = keys['ShiftRight'] = false;
+    if (w.vm) w.vm._sprintK = 0;
+    if (w.id !== 'shotgun') return false;
+  }
+  if (player.sprintFireRaise > 0) return false;
+  interruptShotgunReloadForFire(w);
+  if (reloadBlocksFire(w)) return false;
   if (
     player.fireCooldown > 0 ||
     player.reloadT > 0 ||
     player.switching > 0 ||
     player.pumpT > 0 ||
-    player.boltT > 0
+    player.boltT > 0 ||
+    player.meleeT > 0
   )
     return false;
   if (!w.infiniteAmmo && w.mag <= 0) {
@@ -301,13 +289,12 @@ function fireWeapon() {
     return true;
   }
   if (!w.infiniteAmmo) w.mag--;
+  discardReloadCheckpoint(w);
   player.fireCooldown = 60 / w.rpm;
   G.shots++;
   player.triggerReleased = false;
 
-  /* refresh matrices so hitboxes are where they look */
   for (const e of enemies) if (!e.dead) e.obj.updateMatrixWorld(true);
-
   camera.getWorldDirection(_fwd);
   _rgt.crossVectors(_fwd, _up).normalize();
   const upv = new THREE.Vector3().crossVectors(_rgt, _fwd).normalize();
@@ -317,8 +304,6 @@ function fireWeapon() {
   let anyHit = false,
     killedSomething = false,
     headHit = false;
-  const targets = enemyHitMeshes.concat(worldSolid);
-
   for (let p = 0; p < w.pellets; p++) {
     const dir = _fwd.clone();
     const a = Math.random() * PI * 2;
@@ -330,17 +315,24 @@ function fireWeapon() {
 
     shootRay.set(camera.position, dir);
     shootRay.far = w.range;
-    const hits = shootRay.intersectObjects(targets, false);
+    const hits = shootRay.intersectObjects(enemyHitMeshes.concat(worldSolidCandidates(shootRay)), false);
     let end = camera.position.clone().addScaledVector(dir, w.range);
 
     if (hits.length) {
-      const h = hits[0];
-      end = h.point.clone();
+      const trace = traceBulletPath(hits, w);
+      for (const surface of trace.surfaces) {
+        const h = surface.hit;
+        _hitN.set(0, 1, 0);
+        if (h.face) _hitN.copy(h.face.normal).transformDirection(h.object.matrixWorld);
+        fxImpactWall(h.point, _hitN, h.distance);
+      }
+      const h = trace.terminal;
+      if (h) end = h.point.clone();
+      if (h && trace.enemy) {
       const ud = h.object.userData;
-      if (ud && ud.enemy && !ud.enemy.dead) {
         const e = ud.enemy;
         const dist = h.distance;
-        let dmg = w.damage;
+        let dmg = w.damage * trace.damageScale;
         const fo = clamp(1 - Math.max(0, dist - w.falloffStart) / w.falloffRange, w.falloffMin, 1);
         dmg *= fo;
         const isHead = ud.part === 'head';
@@ -351,10 +343,6 @@ function fireWeapon() {
         if (isHead) headHit = true;
         if (killed) killedSomething = true;
         fxImpactFlesh(h.point, dir, dist, isHead);
-      } else {
-        _hitN.set(0, 1, 0);
-        if (h.face) _hitN.copy(h.face.normal).transformDirection(h.object.matrixWorld);
-        fxImpactWall(h.point, _hitN, h.distance);
       }
     }
     if (p === 0 || w.pellets <= 3 || Math.random() < 0.45)
@@ -372,7 +360,6 @@ function fireWeapon() {
     showHitmark(killedSomething);
   }
 
-  /* --- feedback --- */
   SFX.gunshot(w.sound, 0, 0);
   alertToGunfire(w.noise || 34);
   w.spread = Math.min(w.spreadMax, w.spread + w.spreadShot);
@@ -384,15 +371,20 @@ function fireWeapon() {
   player.burstIdle = 0;
   const vert = n === 0 ? 1.55 : n < 4 ? 1.12 : 0.82 + Math.sin(n * 0.9) * 0.1;
   const drift = Math.sin(n * 0.62) * 0.85 + Math.sin(n * 0.23 + 1.1) * 0.45;
-  player.recoilVelP += w.camPitch * 38 * vert;
-  player.recoilVelY += (drift + (Math.random() - 0.5) * 0.55) * w.camYaw * 38;
-  player.shake = Math.min(1.4, player.shake + w.shakeAmt * 0.5);
-  player.fovKick = Math.min(3.2, player.fovKick + (w.fovKick || 1.0));
-  vmKick(w);
+  /* ADS stabilises the weapon regardless of sight type, including irons. The
+     previous implementation only compensated the 2.5x prism, so every other
+     sight narrowed the picture while keeping full hip-fire angular recoil.
+     A magnified optic gets a small extra visual correction, while each weapon
+     keeps its own single-shot character through adsRecoil. */
+  const recoilScale = currentRecoilScale(w);
+  player.recoilVelP += w.camPitch * 38 * vert * recoilScale;
+  player.recoilVelY += (drift + (Math.random() - 0.5) * 0.55) * w.camYaw * 38 * recoilScale;
+  player.shake = Math.min(1.4, player.shake + w.shakeAmt * 0.5 * lerp(1, 0.68, player.adsEase));
+  player.fovKick = Math.min(3.2, player.fovKick + (w.fovKick || 1.0) * recoilScale);
+  vmKick(w, recoilScale);
   flashT = flashDur;
   flashPower = w.id === 'shotgun' ? 1.7 : w.id === 'sniper' ? 1.9 : w.id === 'rifle' ? 1.0 : 0.8;
 
-  /* shell */
   if (w.id === 'shotgun') {
     player.pumpT = w.pumpTime;
     player.pumpEjected = false;
@@ -408,8 +400,8 @@ function fireWeapon() {
       .addScaledVector(_rgt, 0.24)
       .addScaledVector(upv, -0.08);
     ejectShell(ejPos, _rgt.clone().addScaledVector(_fwd, 0.15), false);
+    maybeAutoReload();
   }
-  /* smoke wisp at the muzzle */
   for (let i = 0; i < 2; i++) {
     spawnParticle(
       PS_SOFT,
@@ -526,7 +518,7 @@ function killEnemy(e, head, dir, killer, creditPlayer?) {
     setTimeout(() => (UI.edgeGlow.style.opacity = '0'), 130);
   }
   SFX.enemyDeath(
-    clamp((e.obj.position.x - camera.position.x) / 14, -1, 1),
+    SFX.panAt(e.obj.position.x, e.obj.position.z),
     e.obj.position.distanceTo(camera.position)
   );
   /* a man going down is louder than the shot that did it, and the squad's
@@ -542,21 +534,16 @@ function killEnemy(e, head, dir, killer, creditPlayer?) {
   respawnQueue.push({ e, t: rand(4.5, 6.5) });
 }
 
-/* viewmodel recoil impulse */
 const vmRec = { pz: 0, py: 0, rx: 0, ry: 0, rz: 0, vz: 0, vy: 0, vrx: 0, vry: 0, vrz: 0 };
-function vmKick(w) {
-  vmRec.vz += w.recoilKick * 46;
-  vmRec.vy += w.recoilKick * 13;
+function vmKick(w, scale = 1) {
+  vmRec.vz += w.recoilKick * 46 * scale;
+  vmRec.vy += w.recoilKick * 13 * scale;
   /* The viewmodel points down -Z, so positive local X raises the muzzle.
      A negative impulse pitches it toward the floor and fights camera recoil. */
-  vmRec.vrx += w.recoilRot * 46;
-  vmRec.vry += (Math.random() - 0.5) * w.recoilRot * 24;
-  vmRec.vrz += (Math.random() - 0.5) * w.recoilRot * 30;
+  vmRec.vrx += w.recoilRot * 46 * scale;
+  vmRec.vry += (Math.random() - 0.5) * w.recoilRot * 24 * scale;
+  vmRec.vrz += (Math.random() - 0.5) * w.recoilRot * 30 * scale;
 }
-
-/* =========================================================================
-   15. PLAYER DAMAGE
-   ========================================================================= */
 function damagePlayer(amount, fromPos, killer) {
   if (player.dead || G.over || G.protect > 0) return;
   player.lastHurt = perfNow;
@@ -584,7 +571,8 @@ function damagePlayer(amount, fromPos, killer) {
   if (player.hp <= 0) {
     player.hp = 0;
     player.dead = true;
-    if (G.gunship?.controlled) endGunship('death');
+    const operatingGunship = !!G.gunship?.controlled;
+    if (operatingGunship) G.gunship.operatorDead = true;
     if (G.jug) exitJuggernaut(false);
     setADS(false);
     updateVitalsUI();
@@ -593,7 +581,7 @@ function damagePlayer(amount, fromPos, killer) {
     G.streak = 0; // dying cashes out the killstreak
     killFeed('你', false, killer);
     G.respawnT = 2.6;
-    UI.respawn.classList.add('on');
+    if (!operatingGunship) UI.respawn.classList.add('on');
     pushComms('指挥部', pick(['你已阵亡 — 重新部署已就位', '坚持住 — 增援正在路上']));
   }
 }

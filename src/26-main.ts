@@ -4,7 +4,8 @@
    ========================================================================= */
 let last = perfNow;
 let mapAccum = 0,
-  hudAccum = 0;
+  hudAccum = 0,
+  chunkAccum = 0;
 
 /* Half the static scene is trim — rail teeth, bolts, cones, small debris — and
    every one of them was being re-rendered into the 2048 shadow map for a smudge
@@ -84,7 +85,7 @@ function frame(now) {
         else respawnEnemy(dead);
       }
     }
-    if (player.dead && G.respawnT > 0) {
+    if (player.dead && G.respawnT > 0 && !G.gunship?.controlled) {
       G.respawnT -= dt;
       UI.respawnNum.textContent = Math.max(1, Math.ceil(G.respawnT));
       if (G.respawnT <= 0) {
@@ -92,9 +93,10 @@ function frame(now) {
         respawnPlayer();
       }
     }
+    if (G.mode === 'mission') tickMission(dt);
     if (G.time <= 0) {
       G.time = 0;
-      endGame(G.kills >= G.deaths);
+      endGame(G.mode === 'mission' ? false : G.kills >= G.deaths);
     }
   } else {
     mouseDX = mouseDY = 0;
@@ -114,6 +116,10 @@ function frame(now) {
   skyUniforms.uTime.value = now * 0.001;
   updateSunShafts();
   if ((!G.running || G.over) && !G.gunship?.controlled) updateViewmodel(dt, mdx, mdy);
+  /* Detached rifle magazines are scene-independent microphysics. They keep
+     moving while the weapon is holstered, the player is dead, or a gunship
+     camera temporarily owns the view. */
+  updateDetachedMagazinePhysics(dt);
   updateShells(dt);
   updateTracers(dt);
   updateEnemyFlashes(dt);
@@ -130,18 +136,20 @@ function frame(now) {
       const t = Math.max(0, G.time);
       UI.timer.textContent = Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
       UI.timer.classList.toggle('warn', t < 30);
-      /* killstreak status: active countdowns, else progress toward the next */
+      /* killstreak status: campaign has no streak rewards or progress line */
       let sl = '';
-      if (G.uavT > 0) sl = '无人侦察机 ' + Math.ceil(G.uavT) + 's';
-      if (G.empT > 0) sl = (sl ? sl + ' · ' : '') + '电磁脉冲 ' + Math.ceil(G.empT) + 's';
-      if (G.heli) sl = (sl ? sl + ' · ' : '') + '武装直升机 ' + Math.ceil(G.heli.t) + 's';
-      if (G.gunship) sl = (sl ? sl + ' · ' : '') + '空中炮艇 ' + Math.ceil(G.gunship.t) + 's';
-      if (G.jug) sl = (sl ? sl + ' · ' : '') + '无畏战士';
-      if (!sl && G.streak > 0 && !player.dead) {
-        const next = STREAK_LADDER.find((s) => s.at > G.streak);
-        sl = next
-          ? `连杀 ×${G.streak} — 再消灭 ${next.at - G.streak} 人：${next.name}`
-          : `连杀 ×${G.streak}`;
+      if (killstreaksEnabled()) {
+        if (G.uavT > 0) sl = '无人侦察机 ' + Math.ceil(G.uavT) + 's';
+        if (G.empT > 0) sl = (sl ? sl + ' · ' : '') + '电磁脉冲 ' + Math.ceil(G.empT) + 's';
+        if (G.heli) sl = (sl ? sl + ' · ' : '') + '武装直升机 ' + Math.ceil(G.heli.t) + 's';
+        if (G.gunship) sl = (sl ? sl + ' · ' : '') + '空中炮艇 ' + Math.ceil(G.gunship.t) + 's';
+        if (G.jug) sl = (sl ? sl + ' · ' : '') + '无畏战士';
+        if (!sl && G.streak > 0 && !player.dead) {
+          const next = STREAK_LADDER.find((s) => s.at > G.streak);
+          sl = next
+            ? `连杀 ×${G.streak} — 再消灭 ${next.at - G.streak} 人：${next.name}`
+            : `连杀 ×${G.streak}`;
+        }
       }
       if (UI.streakLine.textContent !== sl) UI.streakLine.textContent = sl;
     }
@@ -150,6 +158,11 @@ function frame(now) {
   if (mapAccum > 0.055) {
     mapAccum = 0;
     if (G.started) drawMinimap();
+  }
+  chunkAccum += dt;
+  if (chunkAccum > 0.25) {
+    chunkAccum = 0;
+    if (G.running) activateNearbyChunks(player.pos.x, player.pos.z);
   }
 
   /* damage / low-health post uniforms */
@@ -174,9 +187,12 @@ function frame(now) {
   compMat.uniforms.ab.value = 0.18;
 
   /* ---------------- render ---------------- */
-  renderer.setRenderTarget(sceneRT);
+  renderActivePrism();
+  renderer.setRenderTarget(worldRT);
   renderer.clear(true, true, true);
   renderer.render(scene, camera);
+  copyMat.uniforms.tDiffuse.value = worldRT.texture;
+  blit(copyMat, sceneRT);
   if (G.started && !G.gunship?.controlled) {
     /* viewmodel stays hidden on the menus */
     renderer.clearDepth();

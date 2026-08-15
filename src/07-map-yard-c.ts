@@ -159,9 +159,10 @@
 
   /* wheels: three mounted, one burnt to the rim, one loose in the dirt */
   const wheel = new THREE.CylinderGeometry(0.44, 0.44, 0.32, 16);
-  wheel.rotateZ(PI / 2);
+  /* This wreck's long axis is X, so its axle must run across local Z. */
+  wheel.rotateX(PI / 2);
   const rim = new THREE.CylinderGeometry(0.25, 0.25, 0.34, 14);
-  rim.rotateZ(PI / 2);
+  rim.rotateX(PI / 2);
   [
     [1.45, 0.44, 0.98],
     [1.45, 0.44, -0.98],
@@ -180,7 +181,8 @@
   worldSolid.push(burnt);
   const loose = new THREE.Mesh(wheel, MAT.rubber);
   loose.position.set(-2.9, 0.16, 1.9);
-  loose.rotation.z = PI / 2;
+  /* The detached tyre is lying flat in the dirt (axle vertical). */
+  loose.rotation.x = PI / 2;
   loose.castShadow = true;
   G.add(loose);
   worldSolid.push(loose);

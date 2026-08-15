@@ -54,11 +54,13 @@ will not play on a phone.
 | Right click | Toggle aim down sights |
 | `R` | Reload |
 | `Shift` | Sprint, or hold breath while scoped |
-| `Ctrl` | Crouch |
+| `Alt` | Crouch |
+| `Z` | Toggle prone; slowest movement and best stability |
 | `Space` | Jump; tap again in the air to double jump; hold near a ledge to mantle |
 | `1` `2` `3` `4` `5` | M4 carbine / KS-12 pump / P-9 sidearm / SR-7 Longbow / SAW-250 LMG |
 | `6`–`0` | Fire readied killstreaks, in the order they were earned |
-| `V` | Toggle the rifle between full auto and semi |
+| `V` | Melee attack |
+| `B` | Toggle the rifle between full auto and semi |
 | Mouse wheel | Cycle weapons |
 | `Esc` | Pause |
 
@@ -73,16 +75,17 @@ line of fire. Dying costs 2.6 seconds — you redeploy at your spawn with a fres
 and two seconds of protection — and fallen hostiles are replaced the same way. When the
 clock runs out, more eliminations than deaths wins.
 
-On Nuketown both sides spawn like the original: you behind the west house, the squad
-behind the east one. On either map, hostiles hold fire for the first three seconds so
+On Nuketown both sides spawn like the original: you behind the west house, the hostile
+squad behind the east one. On either map, hostiles hold fire for the first three seconds so
 you can get your bearings, and a combat director caps the number shooting at you at any
 one moment to two. The rest keep manoeuvring. That single constraint is what keeps a
 firefight readable instead of collapsing into crossfire you cannot answer.
 
 The report screen shows eliminations, deaths, headshots and accuracy.
 
-You do not fight alone. Three squadmates — 磐石, 猎鹰, 流星 — hold a loose wedge off
-your shoulder, pick their own targets (and get picked: hostiles engage them too), and
+You do not fight alone. Five squadmates — 磐石, 猎鹰, 流星, 雷霆, 山猫 — form a full
+six-person team with you. They share spotted targets, steer around obstacles, spread into
+different approach lanes (and get picked: hostiles engage them too), and
 redeploy eight seconds after going down. Killstreaks are earned at 3, 5, 7, 8, 10 and
 12 consecutive kills and dock on the left of the HUD — yours to fire with `6`–`0`
 whenever the moment is right. The ladder: a UAV that paints every hostile on the
@@ -98,7 +101,7 @@ but keeps whatever you had already earned.
 
 | Slot | Weapon | Magazine | Reserve | Behaviour |
 | --- | --- | --- | --- | --- |
-| 1 | M4 Carbine | 30 | 210 | 760 rpm full auto, `V` switches to semi |
+| 1 | M4 Carbine | 30 | 210 | 760 rpm full auto, `B` switches to semi |
 | 2 | KS-12 Pump | 8 | 48 | Nine pellets per shell, pump between shots |
 | 3 | P-9 Sidearm | 15 | 90 | 430 rpm semi automatic, fastest draw |
 | 4 | SR-7 Longbow | 5 | 25 | Bolt action, a body hit kills |

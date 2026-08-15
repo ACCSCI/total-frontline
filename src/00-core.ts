@@ -39,6 +39,10 @@ const sRGB = (hex) => new THREE.Color(hex).convertSRGBToLinear();
 function linearizeMats(dict) {
   for (const k in dict) {
     const m = dict[k];
+    if (m) {
+      m.userData ||= {};
+      m.userData.surfaceKey ||= k;
+    }
     if (m && m.color) m.color.convertSRGBToLinear();
     if (m && m.emissive) m.emissive.convertSRGBToLinear();
   }

@@ -24,6 +24,73 @@ function deriveCover(rects) {
   }
   return out;
 }
+
+const MAP_CHUNK = 20;
+const MAP_CHUNK_SPAN = 24;
+
+function partitionMapChunks(rec) {
+  const box = new THREE.Box3();
+  const mid = new THREE.Vector3();
+  rec.chunkGlobals = [];
+  rec.chunks = [];
+  const byKey = new Map();
+  for (const obj of rec.group.children.slice()) {
+    if (obj instanceof THREE.InstancedMesh) {
+      rec.chunkGlobals.push(obj);
+      continue;
+    }
+    obj.updateWorldMatrix(true, false);
+    box.setFromObject(obj);
+    const spanX = box.max.x - box.min.x,
+      spanZ = box.max.z - box.min.z;
+    if (!(spanX < MAP_CHUNK_SPAN && spanZ < MAP_CHUNK_SPAN)) {
+      rec.chunkGlobals.push(obj);
+      continue;
+    }
+    if (isFinite(box.min.x) && isFinite(box.max.x)) box.getCenter(mid);
+    else mid.set(obj.position.x, 0, obj.position.z);
+    const ix = Math.floor(mid.x / MAP_CHUNK),
+      iz = Math.floor(mid.z / MAP_CHUNK);
+    const key = ix + ',' + iz;
+    let ch = byKey.get(key);
+    if (!ch) {
+      const g = new THREE.Group();
+      g.name = 'chunk:' + key;
+      rec.group.add(g);
+      ch = {
+        key,
+        ix,
+        iz,
+        group: g,
+        cx: (ix + 0.5) * MAP_CHUNK,
+        cz: (iz + 0.5) * MAP_CHUNK,
+      };
+      byKey.set(key, ch);
+      rec.chunks.push(ch);
+    }
+    ch.group.add(obj);
+  }
+}
+
+function activateNearbyChunks(x, z, radius = 72) {
+  if (!CUR || !CUR.chunks) return;
+  const r2 = radius * radius;
+  const pix = Math.floor(x / MAP_CHUNK),
+    piz = Math.floor(z / MAP_CHUNK);
+  for (let i = 0; i < CUR.chunks.length; i++) {
+    const ch = CUR.chunks[i];
+    const cheb = Math.max(Math.abs(ch.ix - pix), Math.abs(ch.iz - piz));
+    if (cheb <= 1) {
+      ch.group.visible = true;
+      continue;
+    }
+    const dx = ch.cx - x,
+      dz = ch.cz - z;
+    ch.group.visible = dx * dx + dz * dz < r2;
+  }
+  for (let i = 0; i < CUR.chunkGlobals.length; i++) CUR.chunkGlobals[i].visible = true;
+}
+
 function captureMap(pre, meta) {
   const group = new THREE.Group();
   for (const ch of [...scene.children]) if (!pre.has(ch)) group.add(ch);
@@ -43,6 +110,12 @@ function captureMap(pre, meta) {
     },
     meta
   );
+  /* query systems keep the full lists; chunks only hide far mesh groups */
+  rec.allColliders = rec.colliders;
+  rec.allWorldSolid = rec.worldSolid;
+  rec.allGroundMesh = rec.groundMesh;
+  rec.allCeilMesh = rec.ceilMesh;
+  partitionMapChunks(rec);
   /* hand the next map a clean sheet to build against */
   colliders = [];
   worldSolid = [];
@@ -155,7 +228,9 @@ const MAP_YARD = captureMap(_preYardScene, {
       [14, -10],
     ], // roamer
   ],
-  upper: new Set([1, 6]),
+  /* respawns are always staged outdoors; routes may still take combatants
+     through structures after they leave their side of the map */
+  upper: new Set(),
   upperY: 4.42,
   menuCam: menuCamYard,
   env: {

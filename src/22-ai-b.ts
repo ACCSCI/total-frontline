@@ -1,4 +1,8 @@
 'use strict';
+const _enemyToTarget = new THREE.Vector3(),
+  _enemyPlanarFwd = new THREE.Vector3(),
+  _enemyPlanarSide = new THREE.Vector3();
+
 function updateEnemy(e, dt) {
   const obj = e.obj,
     p = e.p;
@@ -45,17 +49,21 @@ function updateEnemy(e, dt) {
           e.gunVel.x *= 0.55;
           e.gunVel.z *= 0.55;
           e.gunAV.multiplyScalar(0.5);
-          SFX.shellDrop(clamp((p.gun.position.x - camera.position.x) / 14, -1, 1));
+          SFX.shellDrop(SFX.panAt(p.gun.position.x, p.gun.position.z));
         }
       }
     }
     return;
   }
 
+  const lod = e.state === ST.COMBAT || e.canSee ? 0 : aiLodLevel(obj.position.x, obj.position.z);
+
   /* ---------- perception ---------- */
-  e.losTimer -= dt;
-  if (e.losTimer <= 0) {
-    e.losTimer = 0.13 + Math.random() * 0.06;
+  if (lod < 2) e.losTimer -= dt;
+  if (lod < 2 && e.losTimer <= 0) {
+    /* Perception remains quicker than the explicit 0.3–0.8s reaction delay,
+       but static-scene raycasts no longer run six-to-eight times a second. */
+    e.losTimer = 0.2 + Math.random() * 0.06;
     const see = !player.dead && hasLOS(e);
     /* no eyes on the player — a squadmate in the open is just as valid a
        target, and the nearest one wins */
@@ -94,7 +102,7 @@ function updateEnemy(e, dt) {
   if (e.flinch > 0) e.flinch = Math.max(0, e.flinch - dt * 3.2);
 
   targetChest(e, _ePos);
-  const toP = _ePos.clone().sub(obj.position);
+  const toP = _enemyToTarget.copy(_ePos).sub(obj.position);
   const distToP = toP.length();
   let desiredX = 0,
     desiredZ = 0,
@@ -163,8 +171,8 @@ function updateEnemy(e, dt) {
         e.strafeT = rand(0.7, 1.9);
         if (Math.random() < 0.55) e.strafeDir *= -1;
       }
-      const fwd = new THREE.Vector3(toP.x, 0, toP.z).normalize();
-      const side = new THREE.Vector3(-fwd.z, 0, fwd.x).multiplyScalar(e.strafeDir);
+      const fwd = _enemyPlanarFwd.set(toP.x, 0, toP.z).normalize();
+      const side = _enemyPlanarSide.set(-fwd.z, 0, fwd.x).multiplyScalar(e.strafeDir);
 
       if (e.tactic === 'hold' || e.reloadT > 0) {
         if (!e.cover) e.cover = pickCover(e, _ePos.x, _ePos.z);
@@ -291,7 +299,7 @@ function updateEnemy(e, dt) {
      Side choice is committed and only released once the direct line has been
      clear for a while — without that hysteresis the enemy ping-pongs between
      "walk at the crate" and "step around it" and never leaves the spot. */
-  if (moveSpeed > 0) {
+  if (moveSpeed > 0 && lod < 2) {
     /* The probe has to use the same vertical band as the mover. It used to test
        from 0.4 up while moveSlide collides from 0.3, so anything topping out in
        between — a two-pallet stack is exactly 0.33 — was invisible to pathing
@@ -311,10 +319,10 @@ function updateEnemy(e, dt) {
       !blocked(px + nx * len, pz + nz * len, y0, y1, 0.5);
     e.repathT -= dt;
     if (e.repathT <= 0) {
-      e.repathT = 0.15;
+      e.repathT = lod === 1 ? 0.4 : 0.15;
       const probe = 1.9;
       if (clearAt(desiredX, desiredZ, probe)) {
-        e.clearT += 0.15;
+        e.clearT += lod === 1 ? 0.4 : 0.15;
         if (e.clearT > 0.45) {
           e.avoidT = 0;
           e.avoidSide = 0;
@@ -371,7 +379,7 @@ function updateEnemy(e, dt) {
 
   /* ---------- move ---------- */
   const flinchSlow = 1 - e.flinch * 0.6;
-  const sp = moveSpeed * flinchSlow;
+  const sp = moveSpeed * flinchSlow * (lod === 2 ? 0.65 : 1);
   if (sp > 0.01) {
     moveSlide(obj.position, desiredX * sp * dt, desiredZ * sp * dt, 0.42, 1.7);
     obj.position.x = clamp(obj.position.x, -HALF + 1, HALF - 1);
@@ -436,11 +444,15 @@ function updateEnemy(e, dt) {
   }
 
   /* gravity / ground snap */
-  const gy = groundAt(obj.position.x, obj.position.z, obj.position.y + 0.75);
-  if (gy !== null) {
-    if (obj.position.y > gy + 0.05) obj.position.y = Math.max(gy, obj.position.y - 12 * dt);
-    else obj.position.y = gy;
-  } else obj.position.y = Math.max(0, obj.position.y - 12 * dt);
+  if (lod === 2) e.gSkip = (e.gSkip || 0) + dt;
+  if (lod < 2 || e.gSkip > 0.4) {
+    if (lod === 2) e.gSkip = 0;
+    const gy = groundAt(obj.position.x, obj.position.z, obj.position.y + 0.75);
+    if (gy !== null) {
+      if (lod === 2 || obj.position.y <= gy + 0.05) obj.position.y = gy;
+      else obj.position.y = Math.max(gy, obj.position.y - 12 * dt);
+    } else obj.position.y = Math.max(0, obj.position.y - 12 * dt);
+  }
 
   /* ---------- facing ---------- */
   let dy = e.targetYaw - e.yaw;
@@ -450,6 +462,10 @@ function updateEnemy(e, dt) {
   obj.rotation.y = e.yaw;
 
   /* ---------- animation ---------- */
+  if (lod >= 2) {
+    e.tag.sprite.visible = false;
+    return;
+  }
   const walk = clamp(e.speed / 2.4, 0, 1);
   e.walkPhase += dt * (3.0 + e.speed * 2.2);
   const s1 = Math.sin(e.walkPhase),
@@ -491,8 +507,8 @@ function updateEnemy(e, dt) {
     /* the sprite lives in world space, so a narrowed FOV magnifies it along
        with everything else — at 15x a nameplate covers the man wearing it.
        Cancelling the zoom keeps it the same size on screen at any aim state. */
-    const s = clamp(dCam * 0.055, 0.85, 2.4) * (camera.fov / BASE_FOV);
-    e.tag.sprite.scale.set(1.55 * s, 0.46 * s, 1);
-    e.tag.sprite.position.y = 2.16;
+    const s = clamp(dCam * 0.045, 0.55, 1.9) * (camera.fov / BASE_FOV);
+    e.tag.sprite.scale.set(1.75 * s, 0.52 * s, 1);
+    e.tag.sprite.position.y = 2.22;
   }
 }

@@ -10,9 +10,16 @@ function clearEnemies() {
   }
   enemies.length = 0;
 }
+function restorePlayerViewmodel() {
+  for (const w of WEAPONS) w.vm.group.visible = false;
+  const active = WEAPONS[player.weapon] || WEAPONS[0];
+  active.vm.group.visible = true;
+  vmRoot.visible = !player.dead && !G.gunship?.controlled;
+}
 function resetWorldState() {
   if (G.gunship) endGunship('reset');
   exitJuggernaut(false);
+  clearAllReloadProgress();
   for (const w of WEAPONS) {
     w.mag = w.magSize;
     w.res = w.reserve;
@@ -32,6 +39,10 @@ function resetWorldState() {
   player.switching = 0;
   player.switchTo = -1;
   player.reloadT = 0;
+  player.reloadDuration = 0;
+  player.reloadEmpty = false;
+  player.reloadRounds = 0;
+  player.meleeT = 0;
   player.pumpT = 0;
   player.boltT = 0;
   player.fireCooldown = 0;
@@ -45,6 +56,8 @@ function resetWorldState() {
   player.shake = 0;
   player.landShake = 0;
   player.crouch = false;
+  player.prone = false;
+  player.proneEdge = false;
   player.height = STAND_H;
   player.eye = STAND_H;
   player.ads = false;
@@ -75,7 +88,7 @@ function resetWorldState() {
   crossShots = G.shots; // redeploy with the reticle already closed
   UI.breathTag.classList.remove('on');
   UI._breathTip = null;
-  WEAPONS[0].vm.group.visible = true;
+  restorePlayerViewmodel();
 
   clearEnemies();
   spawnEnemies();
@@ -137,6 +150,7 @@ function resetWorldState() {
    and the clock keep running. Two seconds of protection against spawn campers. */
 function respawnPlayer() {
   exitJuggernaut(false);
+  clearAllReloadProgress();
   for (const w of WEAPONS) {
     w.mag = w.magSize;
     w.res = w.reserve;
@@ -156,6 +170,10 @@ function respawnPlayer() {
   player.switching = 0;
   player.switchTo = -1;
   player.reloadT = 0;
+  player.reloadDuration = 0;
+  player.reloadEmpty = false;
+  player.reloadRounds = 0;
+  player.meleeT = 0;
   player.pumpT = 0;
   player.boltT = 0;
   player.fireCooldown = 0;
@@ -164,6 +182,8 @@ function respawnPlayer() {
   player.triggerReleased = true;
   player.recoilPitch = player.recoilYaw = player.recoilVelP = player.recoilVelY = 0;
   player.crouch = false;
+  player.prone = false;
+  player.proneEdge = false;
   player.height = STAND_H;
   player.eye = STAND_H;
   player.ads = false;
@@ -175,7 +195,7 @@ function respawnPlayer() {
   player.landShake = 0;
   player.armorMax = 50;
   G.jug = false; // the suit is lost with the body
-  WEAPONS[0].vm.group.visible = true;
+  restorePlayerViewmodel();
   G.protect = 2.0;
   G.dmgFlash = 0;
   updateVitalsUI();
@@ -184,7 +204,11 @@ function respawnPlayer() {
 
 /* ------------------------- killstreaks -------------------------
    3 侦察机 / 5 空袭 / 7 电磁脉冲 / 8 武装直升机 / 10 空中炮艇 / 12 无畏战士。
-   达标只进待命栏（屏幕左侧），按 6–0 手动释放；阵亡清连杀，不清已就绪奖励。 */
+   达标只进待命栏（屏幕左侧），按 F1–F6 手动释放；阵亡清连杀，不清已就绪奖励。
+   战役不给连杀：不计数、不入栏、不能手动释放。 */
+function killstreaksEnabled() {
+  return G.mode !== 'mission';
+}
 const STREAK_LADDER = [
   { at: 3, id: 'uav', name: '无人侦察机' },
   { at: 5, id: 'airstrike', name: '空袭' },
@@ -203,17 +227,19 @@ function streakPop(text) {
   (streakPop as any)._t = setTimeout(() => UI.streakPop.classList.remove('on'), 2600);
 }
 function noteKillstreak() {
+  if (!killstreaksEnabled()) return;
   G.streak++;
   for (const s of STREAK_LADDER) {
     if (s.at !== G.streak) continue;
-    if (G.streaksReady.length >= 5) break; // the dock has five slots, 6–0
+    if (G.streaksReady.length >= 6) break; // the dock has six slots, F1–F6
     G.streaksReady.push(s);
     updateStreakDock();
-    streakPop(s.name + ' 已就绪 — 按 ' + '67890'[G.streaksReady.length - 1]);
+    streakPop(s.name + ' 已就绪 — 按 F' + G.streaksReady.length);
     SFX.radio();
   }
 }
 function activateStreak(i) {
+  if (!killstreaksEnabled()) return;
   const s = G.streaksReady[i];
   if (!s || player.dead || !G.running) return;
   G.streaksReady.splice(i, 1);
@@ -221,7 +247,7 @@ function activateStreak(i) {
   streakPop(s.name + ' 已激活');
   if (s.id === 'uav') {
     G.uavT = 25;
-    comms(null, '无人侦察机上线 — 全图敌情可见', true);
+    comms(null, '无人侦察机上线 — 全图敌情可见', true, 'uav');
   } else if (s.id === 'airstrike') {
     callAirstrike();
   } else if (s.id === 'emp') {
@@ -258,7 +284,7 @@ function callAirstrike() {
     }
   }
   if (!best) return;
-  comms(null, '空袭就位 — 注意躲避', true);
+  comms(null, '空袭就位 — 注意躲避', true, 'airstrike');
   G.airstrike = { x: best.x, z: best.z, t: 1.4, n: 3 };
 }
 const _blastDir = new THREE.Vector3();
@@ -284,7 +310,7 @@ function explodeAt(x, z, killer?) {
       grav: -16,
     });
   const dCam = Math.hypot(x - camera.position.x, z - camera.position.z);
-  SFX.boom(clamp((x - camera.position.x) / 16, -1, 1), dCam);
+  SFX.boom(SFX.panAt(x, z), dCam);
   player.shake = Math.min(1.6, player.shake + clamp(1.3 - dCam / 26, 0, 1.1));
   for (const e of enemies) {
     if (e.dead) continue;
@@ -386,7 +412,7 @@ function skyTarget(from, maxDist, minPlayerDist) {
     _revDir.divideScalar(len);
     losRay.set(from, _revDir);
     losRay.far = len - 0.4;
-    if (losRay.intersectObjects(worldSolid, false).length) continue;
+    if (intersectWorldSolid(losRay).length) continue;
     bd = d;
     best = e;
   }
@@ -402,11 +428,7 @@ function heliShoot(h, e) {
   );
   enemyMuzzleFlash(from);
   spawnTracer(from, _skyEnd, 0xffd27a, 1.4);
-  SFX.gunshot(
-    'rifle',
-    clamp((from.x - camera.position.x) / 16, -1, 1),
-    from.distanceTo(camera.position)
-  );
+  SFX.gunshot('rifle', SFX.panAt(from.x, from.z), from.distanceTo(camera.position));
   if (Math.random() < 0.5) {
     _revDir.subVectors(_skyEnd, from).normalize();
     damageEnemy(e, rand(14, 22), false, _revDir, _skyEnd, '武装直升机');
@@ -452,6 +474,9 @@ function updateHeli(dt) {
   }
 }
 function startGame() {
+  document.body.classList.remove('menu-open');
+  document.body.classList.toggle('campaign', G.mode === 'mission');
+  SFX.menuMusic(false);
   resetWorldState();
   spawnAllies();
   UI.startScreen.classList.add('hide');
@@ -460,11 +485,13 @@ function startGame() {
   G.started = true;
   G.running = true;
   G.over = false;
+  SFX.music(true);
+  SFX.voice('deploy');
   requestLock();
 }
 function restart() {
   UI.endScreen.classList.add('hide');
-  startGame();
+  if (!restartMission()) startGame();
 }
 /* back to the main menu: clean field, live map behind the menu cards */
 function showMenu() {
@@ -477,14 +504,22 @@ function showMenu() {
   UI.hud.classList.remove('on');
   UI.endScreen.classList.add('hide');
   resetWorldState();
+  clearCampaign();
   UI.startScreen.classList.remove('hide');
-  SFX.suspend();
+  document.body.classList.add('menu-open');
+  showMainMenuPage('', false);
+  SFX.music(false);
+  SFX.init();
+  SFX.resume();
+  SFX.menuMusic(true);
 }
 function endGame(win) {
   if (G.over) return;
   if (G.gunship) endGunship('round-end');
   if (G.jug) exitJuggernaut(false);
   G.over = true;
+  document.body.classList.remove('menu-open');
+  SFX.menuMusic(false);
   G.running = false;
   G.started = false;
   if (document.pointerLockElement) document.exitPointerLock();
@@ -499,15 +534,30 @@ function endGame(win) {
   vmRoot.visible = true;
   UI.hud.classList.remove('on');
   UI.pause.classList.remove('on');
+  SFX.music(false);
   /* enemies stop ticking here, so their nameplates have to be cleared by hand
      or they float over the debrief */
   for (const e of enemies) e.tag.sprite.visible = false;
   for (const a of allies) a.tag.sprite.visible = false;
+  const missionRound = G.mode === 'mission';
+  clearMission();
   const es = UI.endScreen;
   es.classList.remove('hide', 'win', 'lose');
   es.classList.add(win ? 'win' : 'lose');
-  $('endTitle').textContent = win ? '死斗胜利' : '死斗失败';
-  $('endTag').textContent = win ? '战报 // 击坠王' : '战报 // 寡不敌众';
+  $('endTitle').textContent = missionRound
+    ? win
+      ? '任务完成'
+      : '任务失败'
+    : win
+      ? '死斗胜利'
+      : '死斗失败';
+  $('endTag').textContent = missionRound
+    ? win
+      ? '战报 // 目标达成'
+      : '战报 // 行动中止'
+    : win
+      ? '战报 // 击坠王'
+      : '战报 // 寡不敌众';
   $('sKills').textContent = G.kills;
   $('sHeads').textContent = G.headshots;
   const acc = G.shots > 0 ? Math.round((G.hits / G.shots) * 100) : 0;
@@ -537,5 +587,6 @@ addEventListener('resize', onResize);
   compMat.uniforms.res.value.set(RTW, RTH);
   PS_SPARK.pts.material.uniforms.hscale.value = RTH * 0.5;
   PS_SOFT.pts.material.uniforms.hscale.value = RTH * 0.5;
+  for (const update of (allocTargets as any).onPrismResize || []) update();
 };
 (allocTargets as any).onResize();

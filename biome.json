@@ -9,7 +9,19 @@
       "**/*.json",
       "!node_modules",
       "!dist",
-      "!bun.lock"
+      "!campaign/dist",
+      "!campaign/data",
+      "!bun.lock",
+      "!src",
+      "!types",
+      "!**/generated-*.ts",
+      "!index.html",
+      "!scripts/smoke.mjs",
+      "!scripts/smoke-ballistics.mjs",
+      "!scripts/smoke-missions.mjs",
+      "!scripts/smoke-reload.mjs",
+      "!scripts/smoke-smg.mjs",
+      "!scripts/smoke-stance.mjs"
     ],
     "ignoreUnknown": true
   },

@@ -282,12 +282,74 @@ function makeHand(flip) {
   const fore = new THREE.Group();
   fore.rotation.set(1.3, 0, s * 0.16);
   g.add(fore);
+  /* Expose the long sleeve separately. During a reload the palm moves to the
+     magazine, but dragging this entire first-person arm through the same grab
+     point would put the sleeve in front of the camera. */
+  g.forearm = fore;
   part(fore, CYLZ(0.04, 0.04, 0.022, 12), GLOVEPAD, 0, 0, 0.026); // glove cuff
   part(fore, CYLZ(0.038, 0.049, 0.2, 12), SLEEVE, 0, 0, 0.14); // forearm
   part(fore, CYLZ(0.049, 0.056, 0.3, 12), SLEEVE_D, 0, 0, 0.38); // upper sleeve, into frame edge
   /* elbow pad reads as kit rather than skin at the frame edge */
   part(fore, B(0.084, 0.03, 0.1), GLOVEPAD, 0, -0.03, 0.3);
   return g;
+}
+
+function buildMicroDot(parent, y, z) {
+  const opt = new THREE.Group();
+  opt.position.set(0, y, z);
+  parent.add(opt);
+  /* A raised skeleton mount, exposed adjustment turrets and a larger 24 mm
+     window make this read as a modern duty optic instead of a black toy tube. */
+  part(opt, B(0.064, 0.012, 0.086), GUNMETAL, 0, -0.021, 0);
+  for (const x of [-0.024, 0.024]) part(opt, B(0.012, 0.034, 0.058), GUNMETAL, x, -0.003, 0);
+  part(opt, B(0.043, 0.011, 0.064), POLYMER, 0, 0.017, 0);
+  /* 30 mm clear window inside a visibly stout protective body. The cap rings
+     deliberately overhang the tube, so their thickness is legible in ADS. */
+  part(opt, TUBEZ(0.034, 0.086, 32), TUBE_MAT, 0, 0.05, 0);
+  part(opt, TUBEZ(0.0395, 0.009, 32), GUNMETAL, 0, 0.05, -0.047);
+  part(opt, TUBEZ(0.0395, 0.009, 32), GUNMETAL, 0, 0.05, 0.047);
+  const glass = part(opt, CYLZ(0.031, 0.031, 0.002, 32), OPTIC_GLASS, 0, 0.05, -0.039);
+  glass.material = OPTIC_GLASS.clone();
+  glass.material.color.setHex(0x416f82);
+  glass.material.emissive.setHex(0x0d2730);
+  glass.material.opacity = 0.17;
+  glass.material.depthWrite = false;
+  const lensSheen = new THREE.MeshBasicMaterial({
+    color: 0x4da0b5,
+    transparent: true,
+    opacity: 0.08,
+  });
+  part(opt, CYLZ(0.026, 0.026, 0.001, 32), lensSheen, 0.006, 0.055, -0.041);
+  part(opt, B(0.02, 0.014, 0.024), POLYMER, 0, 0.093, 0.002);
+  part(opt, CYLZ(0.011, 0.011, 0.014, 16), GUNMETAL, 0.043, 0.05, 0, 0, PI / 2, 0);
+  part(opt, CYLZ(0.007, 0.007, 0.014, 12), GUNMETAL, -0.042, 0.05, 0.014, 0, PI / 2, 0);
+  const dot = part(opt, new THREE.SphereGeometry(0.0017, 12, 10), ACCENT_R, 0, 0.05, -0.035);
+  dot.material = ACCENT_R.clone();
+  dot.material.emissiveIntensity = 3.4;
+  dot.material.depthTest = false;
+  dot.renderOrder = 20;
+  const dotGlow = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: TEX.glow,
+      color: 0xff2b18,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+      opacity: 0.62,
+    })
+  );
+  dotGlow.scale.set(0.0068, 0.0068, 1);
+  dotGlow.position.set(0, 0.05, -0.0345);
+  dotGlow.renderOrder = 21;
+  opt.add(dotGlow);
+  /* User-facing red-dot option is intentionally chunky: the 1.3 scale is
+     accounted for by the mount offsets, so the optical axis does not move. */
+  opt.scale.setScalar(1.3);
+  opt.userData.windowRadius = 0.031 * 1.3;
+  opt.userData.frameRadius = 0.0395 * 1.3;
+  opt.userData.aimY = 0.05;
+  return { group: opt, dot, dotGlow, glass };
 }
 
 function buildRifle() {
@@ -299,12 +361,23 @@ function buildRifle() {
   for (let i = 0; i < 14; i++) part(G, B(0.052, 0.01, 0.01), POLYMER, 0, 0.07, -0.2 + i * 0.024);
   /* lower receiver + mag well */
   part(G, B(0.056, 0.072, 0.13), POLYMER, 0, -0.062, -0.06);
-  const mag = new THREE.Group();
-  mag.position.set(0, -0.135, -0.045);
-  mag.rotation.x = 0.18;
-  G.add(mag);
-  part(mag, B(0.048, 0.15, 0.082), POLYTAN, 0, 0, 0);
-  part(mag, B(0.052, 0.016, 0.086), POLYMER, 0, -0.08, 0);
+  const makeRifleMag = () => {
+    const m = new THREE.Group();
+    m.position.set(0, -0.135, -0.045);
+    m.rotation.x = 0.18;
+    G.add(m);
+    part(m, B(0.048, 0.15, 0.082), POLYTAN, 0, 0, 0);
+    part(m, B(0.052, 0.016, 0.086), POLYMER, 0, -0.08, 0);
+    return m;
+  };
+  /* The old magazine and the incoming fresh one must coexist during the
+     throw-and-catch overlap. Reusing one mesh made the old mag disappear and
+     teleport back into the support hand. */
+  const mag = makeRifleMag();
+  const newMag = makeRifleMag();
+  newMag.visible = false;
+  const ejectedMag = makeRifleMag();
+  ejectedMag.visible = false;
   /* handguard with vents */
   part(G, B(0.07, 0.074, 0.26), POLYMER, 0, -0.004, -0.3);
   for (let i = 0; i < 5; i++) {
@@ -313,42 +386,30 @@ function buildRifle() {
   part(G, B(0.05, 0.014, 0.24), POLYMER, 0, 0.048, -0.3);
   /* barrel + flash hider */
   part(G, CYLZ(0.0165, 0.0165, 0.34, 10), STEEL, 0, 0.006, -0.5);
-  part(G, CYLZ(0.024, 0.021, 0.062, 10), GUNMETAL, 0, 0.006, -0.685);
+  const compensator = new THREE.Group();
+  G.add(compensator);
+  part(compensator, CYLZ(0.024, 0.021, 0.062, 10), GUNMETAL, 0, 0.006, -0.685);
   for (let i = 0; i < 3; i++)
-    part(G, B(0.052, 0.006, 0.018), GUNMETAL, 0, 0.006, -0.672 + i * 0.02);
-  part(G, CYLZ(0.02, 0.02, 0.014, 10), POLYMER, 0, 0.006, -0.716); // bore
+    part(compensator, B(0.052, 0.006, 0.018), GUNMETAL, 0, 0.006, -0.672 + i * 0.02);
+  part(compensator, CYLZ(0.02, 0.02, 0.014, 10), POLYMER, 0, 0.006, -0.716); // bore
+  const suppressor = new THREE.Group();
+  suppressor.visible = false;
+  G.add(suppressor);
+  part(suppressor, CYLZ(0.032, 0.029, 0.25, 16), GUNMETAL, 0, 0.006, -0.79);
   /* gas block + front sight */
   part(G, B(0.04, 0.052, 0.05), GUNMETAL, 0, 0.02, -0.44);
   part(G, B(0.014, 0.052, 0.012), GUNMETAL, 0, 0.062, -0.44);
-  /* red-dot optic — the tube is open so the dot is visible down the sight line */
-  const opt = new THREE.Group();
-  opt.position.set(0, 0.1, -0.1);
-  G.add(opt);
-  part(opt, B(0.034, 0.024, 0.09), POLYMER, 0, -0.008, 0); // mount, under the tube
-  part(opt, TUBEZ(0.0235, 0.115, 18), TUBE_MAT, 0, 0.018, 0);
-  part(opt, TUBEZ(0.0265, 0.01, 18), TUBE_MAT, 0, 0.018, -0.058);
-  part(opt, TUBEZ(0.0265, 0.01, 18), TUBE_MAT, 0, 0.018, 0.058);
-  part(opt, CYLZ(0.021, 0.021, 0.003, 18), OPTIC_GLASS, 0, 0.018, -0.048);
-  part(opt, B(0.017, 0.012, 0.026), POLYMER, 0, 0.046, 0.012); // elevation turret
-  /* emitter plus an additive bloom the post pass can catch — a plain sphere
-     just reads as a red speck instead of a lit reticle floating on the glass */
-  /* Sized against clear glass. It was drawn to carry over an opaque dark lens;
-     now that you can see through the sight, anything that big is a red smear
-     sitting on whatever you are aiming at. */
-  const dot = part(opt, new THREE.SphereGeometry(0.0032, 8, 6), ACCENT_R, 0, 0.018, -0.04);
-  const dotGlow = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: TEX.glow,
-      color: 0xff3320,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0.8,
-    })
-  );
-  dotGlow.scale.set(0.015, 0.015, 1);
-  dotGlow.position.set(0, 0.018, -0.0385);
-  opt.add(dotGlow);
+  const optic = buildMicroDot(G, 0.054, -0.1);
+  const prism = buildPrismScope(G, 0.119, -0.1);
+  const holo = buildHoloSight(G, 0.104, -0.1);
+  prism.group.visible = false;
+  holo.group.visible = false;
+  const angledGrip = new THREE.Group(),
+    verticalGrip = new THREE.Group();
+  verticalGrip.visible = false;
+  G.add(angledGrip, verticalGrip);
+  part(angledGrip, B(0.05, 0.045, 0.13), POLYMER, 0, -0.065, -0.33, -0.2, 0, 0);
+  part(verticalGrip, B(0.042, 0.14, 0.055), POLYMER, 0, -0.12, -0.33, -0.1, 0, 0);
   /* charging handle + ejection port + brass deflector */
   part(G, B(0.03, 0.014, 0.05), GUNMETAL, 0, 0.038, 0.1);
   part(G, B(0.01, 0.03, 0.075), GUNMETAL, 0.04, 0.014, -0.045);
@@ -383,6 +444,12 @@ function buildRifle() {
   const eject = new THREE.Object3D();
   eject.position.set(0.055, 0.02, -0.03);
   G.add(eject);
+  const reloadSlap = new THREE.Object3D();
+  reloadSlap.position.set(-0.052, -0.025, -0.015);
+  G.add(reloadSlap);
+  const rightGrip = new THREE.Object3D();
+  rightGrip.position.set(0.008, -0.14, 0.075);
+  G.add(rightGrip);
 
   const hands = new THREE.Group();
   G.add(hands);
@@ -395,12 +462,38 @@ function buildRifle() {
   lh.rotation.set(0.05, 0.0, -0.18);
   hands.add(lh);
 
+  /* Weapon geometry and hands need different animation spaces. A reload may
+     roll the receiver almost ninety degrees, while wrists and forearms only
+     follow the controls with a much smaller anatomical turn. */
+  const weaponPivot = new THREE.Group();
+  for (const child of [...G.children]) {
+    if (child !== hands && child !== ejectedMag) weaponPivot.add(child);
+  }
+  G.add(weaponPivot);
+
   return {
     group: G,
+    weaponPivot,
     muzzle,
     eject,
-    dot,
+    dot: optic.dot,
+    dotGlow: optic.dotGlow,
+    opticGlass: optic.glass,
+    prism,
+    holo,
+    attachmentNodes: {
+      optic: { micro_dot: optic.group, holo: holo.group, prism_2_5: prism.group },
+      muzzle: { compensator, suppressor },
+      underbarrel: { angled_grip: angledGrip, vertical_grip: verticalGrip },
+    },
+    mag,
+    newMag,
+    ejectedMag,
+    reloadSlap,
+    rightGrip,
     hands,
+    leftHand: lh,
+    rightHand: rh,
     /* held low and canted, so the buttstock falls past the bottom of the
               frame the way it does over a real shoulder instead of parking a
               slab of polymer in the middle of the screen */
@@ -462,6 +555,14 @@ function buildShotgun() {
   part(G, B(0.046, 0.01, 0.056), GUNMETAL, 0, -0.068, -0.016);
   /* shell carrier hint */
   part(G, B(0.052, 0.014, 0.08), GLOVEPAD, 0, -0.052, -0.06);
+  /* One visible shell sells the loading-port action. It is hidden outside a
+     reload and animated by the shared viewmodel rig. */
+  const reloadShell = new THREE.Group();
+  reloadShell.position.set(-0.015, -0.075, -0.075);
+  reloadShell.visible = false;
+  G.add(reloadShell);
+  part(reloadShell, CYLZ(0.012, 0.012, 0.06, 10), ACCENT_R, 0, 0, 0);
+  part(reloadShell, CYLZ(0.013, 0.013, 0.009, 10), STEEL, 0, 0, 0.034);
 
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.02, -0.77);
@@ -486,7 +587,9 @@ function buildShotgun() {
     muzzle,
     eject,
     forend,
+    reloadShell,
     hands,
+    leftHand: lh,
     basePos: new THREE.Vector3(0.222, -0.255, -0.986),
     baseRot: new THREE.Vector3(-0.023, 0.086, 0.055),
     adsPos: new THREE.Vector3(0.0006, -0.065, -1.033),

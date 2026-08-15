@@ -69,6 +69,7 @@ function callGunship() {
   player.vel.set(0, 0, 0);
   setADS(false);
   vmRoot.visible = false;
+  setPlayerBodyVisible(true);
   setGunshipUI(true);
   setGunshipThermal(true);
   compMat.uniforms.gunship.value = 1;
@@ -86,18 +87,30 @@ function selectGunshipWeapon(i) {
 function endGunship(reason?) {
   const s = G.gunship;
   if (!s) return;
+  const redeployOperator = !!s.operatorDead && player.dead && G.running && !G.over;
   scene.remove(s.obj);
   G.gunship = null;
   mouseDX = mouseDY = 0;
   setGunshipThermal(false);
   setGunshipUI(false);
   compMat.uniforms.gunship.value = 0;
-  vmRoot.visible = !player.dead;
+  if (redeployOperator) {
+    G.respawnT = 0;
+    UI.respawn.classList.remove('on');
+    respawnPlayer();
+    comms(null, '炮艇任务结束 — 已从标准部署点重新投入战斗', true);
+  }
+  setPlayerBodyVisible(false);
+  restorePlayerViewmodel();
   fovCur = G.jug ? 68 : BASE_FOV;
   camera.fov = fovCur;
   camera.position.set(player.pos.x, player.pos.y + player.eye, player.pos.z);
   camera.rotation.set(player.pitch + player.recoilPitch, player.yaw + player.recoilYaw, 0);
   camera.updateProjectionMatrix();
+  if (player.dead && G.running && !G.over) {
+    UI.respawnNum.textContent = Math.max(1, Math.ceil(G.respawnT));
+    UI.respawn.classList.add('on');
+  }
   if (G.running && !player.dead && reason === 'expired') comms(null, '空中炮艇已脱离航线', true);
 }
 
@@ -105,7 +118,7 @@ function gunshipGroundPoint(s) {
   _gunshipDir.subVectors(s.aim, camera.position).normalize();
   shootRay.set(camera.position, _gunshipDir);
   shootRay.far = 140;
-  const hit = shootRay.intersectObjects(worldSolid, false)[0];
+  const hit = intersectWorldSolid(shootRay)[0];
   return hit ? _gunshipAim.copy(hit.point) : _gunshipAim.copy(s.aim);
 }
 
@@ -171,7 +184,7 @@ function fireGunship(s) {
       _gunshipDir.divideScalar(coverDist);
       shootRay.set(_gunshipBlastFrom.copy(at).addScaledVector(_up, 0.25), _gunshipDir);
       shootRay.far = coverDist - 0.15;
-      if (shootRay.intersectObjects(worldSolid, false).length) continue;
+      if (intersectWorldSolid(shootRay).length) continue;
     }
     const dmg = weapon.damage * clamp(1 - d / (weapon.radius * 1.25), 0.35, 1);
     _blastDir.set(e.obj.position.x - at.x, 0, e.obj.position.z - at.z).normalize();
@@ -221,7 +234,7 @@ function updateGunshipTargets() {
     _gunshipFrom.divideScalar(distance);
     shootRay.set(camera.position, _gunshipFrom);
     shootRay.far = Math.max(0, distance - 0.35);
-    const occluded = shootRay.intersectObjects(worldSolid, false).length > 0;
+    const occluded = intersectWorldSolid(shootRay).length > 0;
     marker.style.display = 'block';
     marker.style.left = `${x}px`;
     marker.style.top = `${y}px`;
@@ -229,6 +242,24 @@ function updateGunshipTargets() {
     marker.style.height = `${h}px`;
     marker.classList.toggle('occluded', occluded);
   }
+  /* The gunship camera has no first-person body to render, but the operator
+     still exists at player.pos and can be killed. Keep that ground location
+     explicit in blue, clamping it to the viewport edge if the orbit/zoom
+     moves it off-screen. */
+  const self = UI.gunshipSelf;
+  _gunshipAim.set(player.pos.x, player.pos.y + 0.9, player.pos.z).project(camera);
+  const behind = _gunshipAim.z < -1 || _gunshipAim.z > 1;
+  let sx = (_gunshipAim.x * 0.5 + 0.5) * innerWidth,
+    sy = (-_gunshipAim.y * 0.5 + 0.5) * innerHeight;
+  const edge = behind || sx < 24 || sx > innerWidth - 24 || sy < 48 || sy > innerHeight - 24;
+  sx = clamp(sx, 24, innerWidth - 24);
+  sy = clamp(sy, 48, innerHeight - 24);
+  self.style.display = 'block';
+  self.style.left = `${sx}px`;
+  self.style.top = `${sy}px`;
+  self.classList.toggle('edge', edge);
+  self.classList.toggle('dead', player.dead);
+  self.querySelector('span').textContent = player.dead ? '操作员阵亡 // 待重新部署' : '己方操作员';
 }
 
 function updateGunship(dt, mdx?, mdy?) {
@@ -254,6 +285,7 @@ function updateGunship(dt, mdx?, mdy?) {
   s.aim.x = clamp(s.aim.x, -HALF + 2, HALF - 2);
   s.aim.z = clamp(s.aim.z, -HALF + 2, HALF - 2);
   camera.lookAt(s.aim);
+  syncPlayerBody(dt);
   camera.fov = [28, 38, 50][s.weapon];
   camera.updateProjectionMatrix();
   updateGunshipTargets();
@@ -264,6 +296,7 @@ function updateGunship(dt, mdx?, mdy?) {
 
 function goJuggernaut() {
   if (G.gunship?.controlled) endGunship('juggernaut');
+  clearAllReloadProgress();
   for (const w of WEAPONS) w.vm.group.visible = false;
   G.jug = true;
   player.armorMax = 300;
@@ -273,6 +306,10 @@ function goJuggernaut() {
   player.switchTo = -1;
   player.switching = WEAPONS[JUG_WEAPON].drawTime;
   player.reloadT = player.pumpT = player.boltT = 0;
+  player.reloadDuration = 0;
+  player.reloadEmpty = false;
+  player.reloadRounds = 0;
+  player.meleeT = 0;
   player.ads = false;
   player.adsK = player.adsEase = 0;
   WEAPONS[JUG_WEAPON].vm.group.visible = true;
@@ -291,6 +328,10 @@ function exitJuggernaut(showRifle?) {
     player.switching = 0;
     player.switchTo = -1;
     player.reloadT = 0;
+    player.reloadDuration = 0;
+    player.reloadEmpty = false;
+    player.reloadRounds = 0;
+    player.meleeT = 0;
     player.weapon = 0;
     WEAPONS[0].vm.group.visible = true;
     updateAmmoUI();

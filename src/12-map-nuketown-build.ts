@@ -296,15 +296,30 @@ function buildNuketown() {
 
   /* ---- vehicles ---- */
   {
-    /* the bus, mid-street, half up on the west kerb */
+    /* The centre bus is a shell, not a solid cuboid. Its paired centre doors
+       form the classic short cross-route from one side of the street to the
+       other; the front and rear remain closed. */
     const bx = -2.0,
       bz = -3;
-    box(2.5, 2.3, 8.2, bx, 0.42, bz, NMAT.busGrn, { uvScale: [3, 1], map: CLUTTER_MAP });
-    box(2.56, 0.62, 8.26, bx, 2.1, bz, NMAT.trim, { collide: false, solid: false });
-    box(2.58, 0.75, 7.5, bx, 1.15, bz, NMAT.glassDk, { collide: false, solid: false });
+    box(2.3, 0.16, 8.0, bx, 0.12, bz, NMAT.intFloor, { ground: true });
+    box(2.56, 0.3, 8.26, bx, 2.42, bz, NMAT.trim, { ceiling: true });
+    for (const sx of [-1, 1]) {
+      const x = bx + sx * 1.16;
+      for (const dz of [-2.2, 2.2]) box(0.18, 0.72, 3.5, x, 0.28, bz + dz, NMAT.busGrn);
+      box(0.18, 0.3, 7.9, x, 2.12, bz, NMAT.trim);
+      for (const dz of [-3.55, -2.35, -0.86, 0.86, 2.35, 3.55])
+        box(0.18, 1.12, 0.14, x, 1.0, bz + dz, NMAT.busGrn);
+      for (const dz of [-2.95, -1.75, 1.75, 2.95])
+        box(0.19, 0.72, 0.95, x, 1.22, bz + dz, NMAT.glassDk, {
+          collide: false,
+          solid: false,
+        });
+    }
+    for (const dz of [-3.96, 3.96]) box(2.5, 2.3, 0.18, bx, 0.28, bz + dz, NMAT.busGrn);
+    mapRects.push({ x: bx, z: bz, w: 2.5, d: 8.2, c: CLUTTER_MAP });
     box(2.4, 0.34, 0.5, bx, 0.5, bz - 4.25, MAT.darkMetal, { collide: false, solid: false });
     box(2.4, 0.34, 0.5, bx, 0.5, bz + 4.25, MAT.darkMetal, { collide: false, solid: false });
-    for (const dz of [-2.7, 0, 2.7])
+    for (const dz of [-2.7, 2.7])
       for (const dx of [-1.05, 1.05]) {
         const w = new THREE.Mesh(NUKE_WHEEL_BUS, MAT.rubber);
         w.position.set(bx + dx, 0.42, bz + dz);
@@ -500,7 +515,8 @@ const MAP_NUKE = captureMap(_preNukeScene, {
       [27, -2],
     ], // east flank
   ],
-  upper: new Set([1, 2]),
+  /* nobody materialises inside a house; both teams redeploy outdoors */
+  upper: new Set(),
   upperY: 3.15,
   menuCam: menuCamNuke,
   env: {

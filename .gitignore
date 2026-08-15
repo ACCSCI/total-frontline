@@ -3,6 +3,8 @@ _*.js
 _*.png
 _og/
 *.local.*
+.audio-import/
+.audio-master/
 
 # editor and OS
 .vscode/

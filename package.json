@@ -4,12 +4,21 @@
   "private": true,
   "description": "A TypeScript and three.js first-person shooter that runs in a browser tab.",
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "build": "npm run build:legacy && npm run build:campaign",
+    "build:legacy": "node scripts/build.mjs",
+    "build:campaign": "npm --prefix campaign run build",
+    "typecheck": "npm run typecheck:legacy && npm run typecheck:campaign",
+    "typecheck:legacy": "tsc --project tsconfig.json --noEmit",
+    "typecheck:campaign": "npm --prefix campaign run typecheck",
     "check:lines": "bun scripts/check-file-lines.mjs",
+    "check:migration": "bun scripts/check-migration.mjs",
+    "check:alignment": "bun scripts/check-alignment.mjs",
     "check": "biome check . && bun scripts/check-file-lines.mjs",
     "format": "biome format --write .",
-    "serve": "python -m http.server 8123 --directory dist"
+    "serve": "python -m http.server 8123 --directory dist",
+    "serve:legacy": "python -m http.server 8123 --directory dist",
+    "serve:campaign": "npm --prefix campaign run preview",
+    "verify": "npm run typecheck && npm run build && bun scripts/check-migration.mjs && bun scripts/check-alignment.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",

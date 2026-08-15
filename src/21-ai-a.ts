@@ -6,7 +6,8 @@ const losRay = new THREE.Raycaster();
 losRay.far = 70;
 const _eDir = new THREE.Vector3(),
   _ePos = new THREE.Vector3(),
-  _eEye = new THREE.Vector3();
+  _eEye = new THREE.Vector3(),
+  _eFwd = new THREE.Vector3();
 const _revDir = new THREE.Vector3();
 
 function enemyEye(e, out) {
@@ -32,8 +33,8 @@ function hasLOS(e, tp?) {
   _eDir.divideScalar(dist);
   /* field of view (skip when already alerted — they've been told where you are) */
   if (!e.alerted) {
-    const fwd = new THREE.Vector3(-Math.sin(e.yaw), 0, -Math.cos(e.yaw));
-    if (fwd.dot(_eDir) < 0.2) return false;
+    _eFwd.set(-Math.sin(e.yaw), 0, -Math.cos(e.yaw));
+    if (_eFwd.dot(_eDir) < 0.2) return false;
   }
   /* Trace from the player's end, not the shooter's.
      Materials are single-sided, so a ray that starts inside a container never
@@ -42,9 +43,9 @@ function hasLOS(e, tp?) {
      steel the player's own bullets stopped dead against. Casting the same
      segment from the player guarantees the two agree: if you can't shoot him,
      he can't shoot you. */
-  losRay.set(_ePos, _eDir.clone().negate());
+  losRay.set(_ePos, _revDir.copy(_eDir).negate());
   losRay.far = dist - 0.4;
-  const hits = losRay.intersectObjects(worldSolid, false);
+  const hits = intersectWorldSolid(losRay);
   return hits.length === 0;
 }
 
@@ -67,7 +68,7 @@ function muzzleClear(e) {
   _revDir.divideScalar(len);
   losRay.set(_ePos, _revDir);
   losRay.far = len - 0.35;
-  return losRay.intersectObjects(worldSolid, false).length === 0;
+  return intersectWorldSolid(losRay).length === 0;
 }
 
 function enemyShoot(e, atPoint?) {
@@ -103,13 +104,16 @@ function enemyShoot(e, atPoint?) {
     .normalize();
 
   enemyMuzzleFlash(muzzle);
-  const pan = clamp((e.obj.position.x - camera.position.x) / 16, -1, 1);
-  SFX.gunshot(Math.random() < 0.5 ? 'rifle' : 'pistol', pan, dist);
+  SFX.gunshot(
+    Math.random() < 0.5 ? 'rifle' : 'pistol',
+    SFX.panAt(muzzle.x, muzzle.z),
+    muzzle.distanceTo(camera.position)
+  );
 
   /* trace against the world, then test every friendly capsule on the way */
   losRay.set(muzzle, dir);
   losRay.far = 90;
-  const hits = losRay.intersectObjects(worldSolid, false);
+  const hits = intersectWorldSolid(losRay);
   const wallDist = hits.length ? hits[0].distance : 90;
 
   /* ray vs vertical cylinder; nearest body along the ray takes the hit */
@@ -169,7 +173,7 @@ function enemyShoot(e, atPoint?) {
       _revDir.divideScalar(revLen);
       losRay.set(_ePos, _revDir);
       losRay.far = revLen - 0.35;
-      if (losRay.intersectObjects(worldSolid, false).length) clearPath = false;
+      if (intersectWorldSolid(losRay).length) clearPath = false;
     }
   }
 
@@ -184,7 +188,7 @@ function enemyShoot(e, atPoint?) {
     fxImpactWall(hits[0].point, n, hits[0].distance);
     /* near-miss whip crack */
     if (hits[0].point.distanceTo(camera.position) < 4.5 && Math.random() < 0.6) {
-      SFX.impactWall(clamp((hits[0].point.x - camera.position.x) / 6, -1, 1), 2);
+      SFX.impactWall(SFX.panAt(hits[0].point.x, hits[0].point.z), 2);
     }
   }
 }
@@ -230,15 +234,28 @@ function pickCover(e, tx, tz) {
    Squad comms. Text callouts with a radio blip. Costs nothing and does more
    for "these things are co-ordinating" than any amount of steering code.
    ------------------------------------------------------------------------- */
-const COMMS_COOLDOWN: { last?: number } = {};
-function comms(e, text, priority?) {
+const COMMS_COOLDOWN: { last?: number; voice?: number; keys?: Record<string, number> } = {
+  keys: {},
+};
+function comms(e, text, priority?, voiceKey?) {
   if (!G.running || G.over) return;
   const now = perfNow;
-  if (!priority && COMMS_COOLDOWN.last && now - COMMS_COOLDOWN.last < 1700) return;
-  if (COMMS_COOLDOWN.last && now - COMMS_COOLDOWN.last < 420) return;
+  /* A six-person squad can discover, reload and change tactics at once. Treat
+     radio space as a budget: ordinary chatter is sparse, priority events may
+     cut in, and recorded lines have their own much longer cooldown. */
+  if (!priority && COMMS_COOLDOWN.last && now - COMMS_COOLDOWN.last < 4200) return;
+  if (COMMS_COOLDOWN.last && now - COMMS_COOLDOWN.last < (priority ? 950 : 1800)) return;
+  if (voiceKey) {
+    const sameKey = COMMS_COOLDOWN.keys[voiceKey] || 0;
+    if (!priority && COMMS_COOLDOWN.voice && now - COMMS_COOLDOWN.voice < 11500) return;
+    if (!priority && sameKey && now - sameKey < 18000) return;
+    COMMS_COOLDOWN.voice = now;
+    COMMS_COOLDOWN.keys[voiceKey] = now;
+  }
   COMMS_COOLDOWN.last = now;
   pushComms(e ? e.name : '指挥部', text);
-  SFX.radio();
+  if (voiceKey) SFX.voice(voiceKey);
+  else SFX.radio();
 }
 
 const _wpDir = new THREE.Vector3();
@@ -304,12 +321,8 @@ function updateCombatDirector() {
   for (let i = 0; i < Math.min(MAX_SHOOTERS, _active.length); i++) _active[i].mayFire = true;
 }
 
-/* =========================================================================
-   16b. ALLIES — a three-man fireteam on the player's side. They hold a loose
-   wedge off the player's shoulder and engage whatever they can see; enemies
-   pick between them and the player in updateEnemy's perception pass (e.tgt).
-   ========================================================================= */
-const ALLY_NAMES = ['磐石', '猎鹰', '流星'];
+/* Five squadmates plus the player make an even six-person team. */
+const ALLY_NAMES = ['磐石', '猎鹰', '流星', '雷霆', '山猫'];
 const allies = [];
 const _allyT = new THREE.Vector3();
 /* blue IFF strobe, so a squadmate never reads as a hostile silhouette */
@@ -333,9 +346,9 @@ function allyLOS(a, tp) {
   const dist = _aDir.length();
   if (dist < 0.5) return true;
   _aDir.divideScalar(dist);
-  losRay.set(tp, _aDir.clone().negate());
+  losRay.set(tp, _revDir.copy(_aDir).negate());
   losRay.far = dist - 0.4;
-  return losRay.intersectObjects(worldSolid, false).length === 0;
+  return intersectWorldSolid(losRay).length === 0;
 }
 
 function makeAlly(i) {
@@ -345,7 +358,7 @@ function makeAlly(i) {
   });
   const obj = new THREE.Group();
   obj.add(parts.model);
-  const tag = makeTag(ALLY_NAMES[i], '#7ab8ff');
+  const tag = makeTag(ALLY_NAMES[i], '#55a8ff', 'ally');
   obj.add(tag.sprite);
   return {
     ally: true,
@@ -425,13 +438,12 @@ function allyShoot(a, e) {
   _aEnd.set(e.obj.position.x, e.obj.position.y + 1.25, e.obj.position.z);
   const dist = _aMuz.distanceTo(_aEnd);
   enemyMuzzleFlash(_aMuz);
-  const pan = clamp((_aMuz.x - camera.position.x) / 16, -1, 1);
-  SFX.gunshot('rifle', pan, dist);
+  SFX.gunshot('rifle', SFX.panAt(_aMuz.x, _aMuz.z), _aMuz.distanceTo(camera.position));
   /* the world gets first claim on the round: a wall between them eats it */
   _aDir.subVectors(_aEnd, _aMuz).divideScalar(dist);
   losRay.set(_aMuz, _aDir);
   losRay.far = dist + 1;
-  const hits = losRay.intersectObjects(worldSolid, false);
+  const hits = intersectWorldSolid(losRay);
   if (hits.length && hits[0].distance < dist - 0.3) {
     _aEnd.copy(hits[0].point);
   } else {
@@ -449,8 +461,18 @@ function allyShoot(a, e) {
 const ALLY_FORM = [
   [-1.7, 2.3],
   [1.7, 2.3],
-  [0, 3.6],
+  [-3.0, 4.2],
+  [3.0, 4.2],
+  [0, 5.2],
 ];
+const AI_NEAR = 28, AI_MID = 52;
+function aiLodLevel(x, z) {
+  const dx = x - player.pos.x, dz = z - player.pos.z;
+  const d2 = dx * dx + dz * dz;
+  if (d2 < AI_NEAR * AI_NEAR) return 0;
+  if (d2 < AI_MID * AI_MID) return 1;
+  return 2;
+}
 function updateAlly(a, dt) {
   const obj = a.obj,
     p = a.p;
@@ -466,69 +488,43 @@ function updateAlly(a, dt) {
     return;
   }
 
+  const lod = a.tgt && !a.tgt.dead ? 0 : aiLodLevel(obj.position.x, obj.position.z);
+
   /* ---------- target scan: nearest visible hostile ---------- */
   a.scanT -= dt;
   if (a.scanT <= 0) {
-    a.scanT = 0.16;
-    let best = null,
-      bd = 45;
-    for (const e of enemies) {
-      if (e.dead) continue;
-      const d = Math.hypot(e.obj.position.x - obj.position.x, e.obj.position.z - obj.position.z);
-      if (
-        d < bd &&
-        allyLOS(a, _allyT.set(e.obj.position.x, e.obj.position.y + 1.3, e.obj.position.z))
-      ) {
-        bd = d;
-        best = e;
+    a.scanT = lod ? 0.5 : 0.22;
+    if (lod < 2) {
+      const best = selectAllyTarget(a);
+      if (best && best !== a.tgt) {
+        a.reactT = rand(0.35, 0.8); // human reaction delay
+        if (Math.random() < 0.18)
+          comms(a, pick(['发现敌人', '接敌，正在开火', '目标出现，压制他']), false, 'contact');
       }
+      if (!best) a.reactT = 0;
+      a.tgt = best;
     }
-    if (best && best !== a.tgt) {
-      a.reactT = rand(0.35, 0.8); // human reaction delay
-      if (Math.random() < 0.4) comms(a, pick(['发现敌人', '接敌，正在开火', '目标出现，压制他']));
-    }
-    if (!best) a.reactT = 0;
-    a.tgt = best;
   }
 
-  /* ---------- formation follow ---------- */
-  const fy = player.yaw;
-  const f = ALLY_FORM[a.idx % ALLY_FORM.length];
-  const tx = player.pos.x + Math.cos(fy) * f[0] + Math.sin(fy) * f[1];
-  const tz = player.pos.z - Math.sin(fy) * f[0] + Math.cos(fy) * f[1];
-  const dxF = tx - obj.position.x,
-    dzF = tz - obj.position.z;
-  const dF = Math.hypot(dxF, dzF);
-  let sp = 0;
-  if (dF > 2.2) {
-    sp = dF > 8 ? 5.5 : 3.2; // hustles to catch up, walks inside the wedge
-    moveSlide(obj.position, (dxF / dF) * sp * dt, (dzF / dF) * sp * dt, 0.42, 1.7);
-    obj.position.x = clamp(obj.position.x, -HALF + 1, HALF - 1);
-    obj.position.z = clamp(obj.position.z, -HALF + 1, HALF - 1);
-  }
-  /* left far behind or wedged on geometry: rejoin on open ground */
-  if (dF > 16) {
-    const nf = nearestFree(
-      player.pos.x + rand(-3, 3),
-      player.pos.z + rand(-3, 3),
-      0.5,
-      1.7,
-      6,
-      obj.position.y
-    );
-    obj.position.x = nf[0];
-    obj.position.z = nf[1];
-  }
+  const e = a.tgt && !a.tgt.dead ? a.tgt : null;
+  /* Out of combat they hold formation. Once contact is made, each soldier
+     takes his own engagement arc around the hostile instead of tailing the
+     player through the fight. */
+  const goal = allyTacticalGoal(a, e);
+  const sp = allyMoveSmart(a, goal.x, goal.z, dt, lod).speed;
   a.speed = damp(a.speed, sp, 10, dt);
 
-  const gy = groundAt(obj.position.x, obj.position.z, obj.position.y + 0.75);
-  if (gy !== null) {
-    if (obj.position.y > gy + 0.05) obj.position.y = Math.max(gy, obj.position.y - 12 * dt);
-    else obj.position.y = gy;
-  } else obj.position.y = Math.max(0, obj.position.y - 12 * dt);
+  if (lod === 2) a.gSkip = (a.gSkip || 0) + dt;
+  if (lod < 2 || a.gSkip > 0.4) {
+    if (lod === 2) a.gSkip = 0;
+    const gy = groundAt(obj.position.x, obj.position.z, obj.position.y + 0.75);
+    if (gy !== null) {
+      if (lod === 2 || obj.position.y <= gy + 0.05) obj.position.y = gy;
+      else obj.position.y = Math.max(gy, obj.position.y - 12 * dt);
+    } else obj.position.y = Math.max(0, obj.position.y - 12 * dt);
+  }
 
   /* ---------- engage ---------- */
-  const e = a.tgt && !a.tgt.dead ? a.tgt : null;
   if (e) {
     const dEx = e.obj.position.x - obj.position.x,
       dEz = e.obj.position.z - obj.position.z;
@@ -540,7 +536,7 @@ function updateAlly(a, dt) {
     );
     if (a.reactT > 0) {
       a.reactT -= dt;
-    } else if (G.grace <= 0 && G.empT <= 0) {
+    } else if (a.tgtVisible && G.grace <= 0) {
       a.fireT -= dt;
       if (a.fireT <= 0) {
         if (a.burst <= 0) a.burst = randI(2, 4);
@@ -563,6 +559,10 @@ function updateAlly(a, dt) {
   obj.rotation.y = a.yaw;
 
   /* ---------- animation (same rig poses as the hostiles) ---------- */
+  if (lod >= 2) {
+    a.tag.sprite.visible = false;
+    return;
+  }
   const walk = clamp(a.speed / 2.4, 0, 1);
   a.walkPhase += dt * (3.0 + a.speed * 2.2);
   const s1 = Math.sin(a.walkPhase),
@@ -590,8 +590,8 @@ function updateAlly(a, dt) {
   const dCam = obj.position.distanceTo(camera.position);
   a.tag.sprite.visible = G.started && dCam < 46;
   if (a.tag.sprite.visible) {
-    const s = clamp(dCam * 0.055, 0.85, 2.4) * (camera.fov / BASE_FOV);
-    a.tag.sprite.scale.set(1.55 * s, 0.46 * s, 1);
-    a.tag.sprite.position.y = 2.16;
+    const s = clamp(dCam * 0.045, 0.55, 1.9) * (camera.fov / BASE_FOV);
+    a.tag.sprite.scale.set(1.75 * s, 0.52 * s, 1);
+    a.tag.sprite.position.y = 2.22;
   }
 }

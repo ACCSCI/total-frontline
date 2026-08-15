@@ -324,8 +324,7 @@ function updateShells(dt) {
         s.v.x *= 0.62;
         s.v.z *= 0.62;
         s.av.multiplyScalar(0.55);
-        const pan = clamp((s.mesh.position.x - camera.position.x) / 12, -1, 1);
-        SFX.shellDrop(pan);
+        SFX.shellDrop(SFX.panAt(s.mesh.position.x, s.mesh.position.z), s.big);
       }
     }
   }
@@ -334,8 +333,7 @@ function updateShells(dt) {
 /* --- impact effects --- */
 function fxImpactWall(point, normal, dist) {
   addDecal(point, normal);
-  const pan = clamp((point.x - camera.position.x) / 14, -1, 1);
-  SFX.impactWall(pan, dist);
+  SFX.impactWall(SFX.panAt(point.x, point.z), dist);
   /* spark cone off the surface, hottest at the core */
   for (let i = 0; i < 11; i++) {
     const v = new THREE.Vector3(
@@ -404,8 +402,7 @@ function fxImpactWall(point, normal, dist) {
   }
 }
 function fxImpactFlesh(point, dir, dist, head) {
-  const pan = clamp((point.x - camera.position.x) / 14, -1, 1);
-  SFX.impactFlesh(pan, dist);
+  SFX.impactFlesh(SFX.panAt(point.x, point.z), dist);
   const n = head ? 18 : 11;
   for (let i = 0; i < n; i++) {
     const v = new THREE.Vector3(-dir.x + rand(-0.8, 0.8), rand(0.1, 1.3), -dir.z + rand(-0.8, 0.8))

@@ -19,13 +19,17 @@ const SFX: any = (() => {
     if (!AC) return;
     ctx = new AC();
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -14;
-    comp.knee.value = 24;
-    comp.ratio.value = 9;
-    comp.attack.value = 0.003;
-    comp.release.value = 0.22;
+    /* Category buses do the audible dynamics work. The final stage is only a
+       fast safety limiter, so automatic fire cannot make dialogue/ambience
+       audibly pump as the old -14 dB wide-knee compressor did. */
+    comp.threshold.value = -6;
+    comp.knee.value = 2;
+    comp.ratio.value = 16;
+    comp.attack.value = 0.001;
+    comp.release.value = 0.085;
     master = ctx.createGain();
-    master.gain.value = 0.85;
+    const storedVolume = localStorage.getItem('tf.masterVolume');
+    master.gain.value = clamp(storedVolume === null ? 0.82 : Number(storedVolume), 0, 1);
     master.connect(comp);
     comp.connect(ctx.destination);
 
@@ -82,6 +86,22 @@ const SFX: any = (() => {
   }
   const T = () => ctx.currentTime;
 
+  /* One attenuation law for both samples and the procedural fallback. The
+     previous linear curve kept mid-field gunfire far too close to full scale,
+     especially when six AI could overlap. This power curve preserves a clear
+     local report but gets out of the way quickly across a 40-70 m map. */
+  function weaponDistanceGain(distance) {
+    const d = Math.max(0, distance || 0);
+    return Math.max(0.018, 0.64 / (1 + (d / 11) ** 1.65));
+  }
+
+  /* Listener-relative pan. World-X stereo made every sound stay glued to
+     the map's east/west once you turned; camera +X is the ear axis. */
+  function panAt(x, z) {
+    const e = camera.matrixWorld.elements;
+    const right = (x - camera.position.x) * e[0] + (z - camera.position.z) * e[2];
+    return clamp(right / 14, -1, 1);
+  }
   function panner(pan) {
     if (!ctx.createStereoPanner) return null;
     const p = ctx.createStereoPanner();
@@ -229,16 +249,30 @@ const SFX: any = (() => {
   }
 
   function magOut() {
-    noise({ type: 'bandpass', freq: 2300, q: 2, gain: 0.2, dur: 0.07 });
-    tone({ type: 'square', f0: 520, f1: 300, dur: 0.05, gain: 0.07, lp: 2500 });
+    noise({ type: 'bandpass', freq: 2300, q: 2, gain: 0.32, dur: 0.09 });
+    tone({ type: 'square', f0: 620, f1: 260, dur: 0.065, gain: 0.12, lp: 2600 });
+    noise({ type: 'lowpass', freq: 700, gain: 0.18, dur: 0.08, delay: 0.055 });
   }
   function magIn() {
-    noise({ type: 'lowpass', freq: 1300, gain: 0.3, dur: 0.09, atk: 0.001 });
-    tone({ type: 'square', f0: 240, f1: 120, dur: 0.07, gain: 0.1, lp: 1800 });
+    noise({ type: 'lowpass', freq: 1500, gain: 0.42, dur: 0.11, atk: 0.001 });
+    tone({ type: 'square', f0: 310, f1: 105, dur: 0.085, gain: 0.16, lp: 1900 });
+    noise({ type: 'highpass', freq: 2600, gain: 0.15, dur: 0.035, delay: 0.065 });
   }
   function boltClick() {
     noise({ type: 'highpass', freq: 3200, gain: 0.24, dur: 0.05, atk: 0.001 });
     tone({ type: 'square', f0: 1100, f1: 600, dur: 0.04, gain: 0.08, lp: 5000 });
+  }
+  function weaponSwap(heavy) {
+    noise({ type: 'lowpass', freq: heavy ? 560 : 820, gain: 0.24, dur: 0.11 });
+    tone({
+      type: 'square',
+      f0: heavy ? 180 : 280,
+      f1: 95,
+      dur: 0.07,
+      gain: heavy ? 0.14 : 0.1,
+      lp: 1700,
+      delay: 0.045,
+    });
   }
   function pumpSound(back) {
     noise({ type: 'bandpass', freq: back ? 1500 : 2600, q: 2.2, gain: 0.3, dur: 0.09, atk: 0.001 });
@@ -366,6 +400,16 @@ const SFX: any = (() => {
     noise({ type: 'lowpass', freq: 220, gain: 0.3, dur: 0.2, atk: 0.002 });
     tone({ type: 'sine', f0: 150, f1: 52, dur: 0.22, gain: 0.2 });
   }
+  function melee(hit) {
+    noise({
+      type: hit ? 'lowpass' : 'bandpass',
+      freq: hit ? 430 : 1500,
+      gain: hit ? 0.34 : 0.17,
+      dur: hit ? 0.1 : 0.075,
+      atk: 0.001,
+    });
+    tone({ type: 'triangle', f0: hit ? 180 : 310, f1: 75, dur: 0.11, gain: hit ? 0.18 : 0.09 });
+  }
   function alarm(win) {
     if (win) {
       [660, 880, 1320].forEach((f, i) => {
@@ -391,6 +435,11 @@ const SFX: any = (() => {
   function resume() {
     if (ctx && ctx.state === 'suspended') ctx.resume();
   }
+  function setMasterVolume(value) {
+    const level = clamp(Number(value), 0, 1);
+    localStorage.setItem('tf.masterVolume', String(level));
+    if (master && ctx) master.gain.setTargetAtTime(level, ctx.currentTime, 0.025);
+  }
 
   return {
     init,
@@ -398,11 +447,19 @@ const SFX: any = (() => {
     _noise: noise,
     _tone: tone,
     _ok: () => ready,
+    _weaponDistanceGain: weaponDistanceGain,
+    /* Sample-backed audio is attached by 01c-audio-assets.ts. Keep the
+       context/master private to this closure except for these read-only
+       accessors so every sound still shares the compressor and pause state. */
+    _context: () => ctx,
+    _master: () => master,
+    panAt,
     radio,
     dryFire,
     magOut,
     magIn,
     boltClick,
+    weaponSwap,
     pumpSound,
     boltCycle,
     shellDrop,
@@ -416,7 +473,9 @@ const SFX: any = (() => {
     enemyDeath,
     heartbeat,
     damageTaken,
+    melee,
     alarm,
+    setMasterVolume,
     suspend,
     resume,
   };
