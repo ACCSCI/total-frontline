@@ -132,13 +132,13 @@ export function updateCampaignEnemy(
   e.root.visible = dist < 52;
   e.root.rotation.y = Math.atan2(dx, dz);
 
-  const canSee = dist < 30 && !losBlocked(e.root.position, playerPos, host.level.obstacles);
+  const canSee = dist < 52 && !losBlocked(e.root.position, playerPos, host.level.obstacles);
   if (canSee) {
     e.reactionT -= dt;
     if (e.reactionT <= 0) e.engaged = true;
   } else {
     e.engaged = false;
-    e.reactionT = 0.35 + Math.random() * 0.55;
+    e.reactionT = 0.35 + Math.random() * 0.45;
   }
 
   let mx = 0;
@@ -154,10 +154,21 @@ export function updateCampaignEnemy(
     mx = (mx / ml) * 1.55;
     mz = (mz / ml) * 1.55;
     if (Math.random() < dt * 0.45) e.strafeDir *= -1;
+    /* Single-player fire cadence: 2-4 round bursts with short gaps, and the
+       same 25m/55m damage falloff curve. */
     e.fireT -= dt;
     if (e.fireT <= 0) {
-      e.fireT = 0.95 + Math.random() * 1.35;
-      if (dist < 30) host.hurtPlayer(5 + Math.random() * 4, e);
+      if (e.burst > 0) {
+        e.burst--;
+        const dmg =
+          (5.5 + Math.random() * 3.5) *
+          THREE.MathUtils.clamp(1 - Math.max(0, dist - 25) / 55, 0.5, 1);
+        host.hurtPlayer(dmg, e);
+        e.fireT = e.burst > 0 ? 0.11 + Math.random() * 0.04 : 0.85 + Math.random() * 1.05;
+      } else {
+        e.burst = 2 + Math.floor(Math.random() * 3);
+        e.fireT = 0.03;
+      }
     }
   } else {
     e.patrolT += dt;

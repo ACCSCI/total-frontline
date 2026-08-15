@@ -29,6 +29,7 @@ function cvs(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
 function finishTex(c: HTMLCanvasElement, repeat?: [number, number]): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = 8;
   if (repeat) t.repeat.set(repeat[0], repeat[1]);
   return t;
@@ -401,6 +402,9 @@ export function buildSoldierModel(name = ENEMY_NAMES[0]): SoldierRig {
     }
   });
   collapseRig(model);
+  hbHead.userData.part = 'head';
+  hbBody.userData.part = 'body';
+  hbLegs.userData.part = 'legs';
   const tag = makeEnemyTag(name);
   return { model, body, legs, arms, rig, gun, gunMuzzle, head, hbHead, hbBody, hbLegs, tag };
 }
@@ -415,6 +419,9 @@ export function cloneSoldierRig(template: SoldierRig, name = ENEMY_NAMES[0]): So
   const hbHead = model.getObjectByName('hbHead') as THREE.Mesh;
   const hbBody = model.getObjectByName('hbBody') as THREE.Mesh;
   const hbLegs = model.getObjectByName('hbLegs') as THREE.Mesh;
+  hbHead.userData.part = 'head';
+  hbBody.userData.part = 'body';
+  hbLegs.userData.part = 'legs';
   const legs = ['hipL', 'hipR'].map((n, li) => ({
     hip: model.getObjectByName(n) as THREE.Group,
     knee: model.getObjectByName(li === 0 ? 'kneeL' : 'kneeR') as THREE.Group,

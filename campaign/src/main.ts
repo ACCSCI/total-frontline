@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import missionsData from '../../shared/missions.json';
 import { CampaignRules } from './campaign';
 import { P0Combat } from './combat';
 import { Crosshair } from './crosshair';
 import { PropDebugger } from './debug-mode';
 import { gridFootprint } from './grid';
 import { predictGroundDelta } from './ground-model';
+import { typeMissionBriefing } from './intro-typing';
 import { buildP0Level, buildSupplyCrate, type P0Level } from './level';
 import { FirstPersonPlayer } from './player';
 import { createRenderer, type GameRenderer } from './renderer';
@@ -35,7 +35,6 @@ let renderer: GameRenderer;
 let level: P0Level;
 let player: FirstPersonPlayer;
 let cutscene: Sequencer | null = null;
-let cutsceneKind: 'intro' | 'outro' | null = null;
 let controlsEnabled = false;
 let reachedExit = false;
 let completed = false;
@@ -53,10 +52,10 @@ let crosshair: Crosshair | null = null;
 const beacons = new Map<string, { el: HTMLDivElement; label: string; z: number }>();
 const _beaconWorld = new THREE.Vector3();
 const _beaconCam = new THREE.Vector3();
+const _muzzleWorld = new THREE.Vector3();
 
 const keys = new Set<string>();
 const objectiveState = new Map<string, boolean>();
-let currentObjectiveIndex = 0;
 let lastFrameMs = performance.now();
 
 const setLoading = (text: string) => (loadingText.textContent = text);
@@ -120,7 +119,6 @@ function finishIntro() {
   introOverlay.hidden = true;
   introOverlay.classList.remove('typing', 'fading', 'flying');
   cutscene = null;
-  cutsceneKind = null;
   cutsceneBars.hidden = true;
   hud.hidden = false;
   updateObjective();
@@ -134,7 +132,6 @@ function startIntroFlight() {
   introOverlay.classList.remove('typing');
   introOverlay.classList.add('flying', 'fading');
   cutscene = new Sequencer(makeIntroCutscene());
-  cutsceneKind = 'intro';
   cutscene.onFinished = () => {
     finishIntro();
   };
@@ -150,26 +147,8 @@ async function startTyping() {
   introState = 'typing';
   introOverlay.classList.add('typing');
   const token = ++introToken;
-
-  const m = missionsData.mission01;
-  const lines = [m.location, m.time, `任务：回收幸存者 VEGA`];
-  let full = '';
-  for (let li = 0; li < lines.length; li++) {
-    for (const ch of lines[li]) {
-      if (token !== introToken) return;
-      full += ch;
-      introTyped.textContent = full;
-      SFX.typeKey();
-      await wait(42 + Math.random() * 46);
-    }
-    if (token !== introToken) return;
-    full += '\n';
-    introTyped.textContent = full;
-    SFX.lineConfirm();
-    await wait(300);
-  }
-
-  if (token !== introToken) return;
+  const finished = await typeMissionBriefing(introTyped, () => token !== introToken);
+  if (!finished || token !== introToken) return;
   SFX.revealHit();
   await wait(750);
   if (token !== introToken) return;
@@ -190,11 +169,9 @@ function skipIntro() {
 function playOutro() {
   stopControls();
   cutscene = new Sequencer(makeOutroCutscene());
-  cutsceneKind = 'outro';
   cutsceneBars.hidden = false;
   cutscene.onFinished = () => {
     cutscene = null;
-    cutsceneKind = null;
     cutsceneBars.hidden = true;
     completed = true;
     completePanel.hidden = false;
@@ -315,13 +292,25 @@ async function boot() {
         cutscene.update(dt, player.camera);
       } else if (controlsEnabled && !completed) {
         handleKeys();
-        player.update(dt, level);
         player.aimEase = campaign?.adsEase ?? 0;
-        campaign?.update(dt);
+        const aimFov = campaign?.activeWeapon?.def.adsFov ?? 75;
+        const zoomRatio = Math.tan((aimFov * Math.PI) / 360) / Math.tan((75 * Math.PI) / 360);
+        player.setLookScale(
+          THREE.MathUtils.lerp(1, THREE.MathUtils.clamp(zoomRatio, 0.18, 1), player.aimEase)
+        );
+        player.adsFov = aimFov;
+        player.scoped = campaign?.activeWeapon?.def.id === 'sr7' && (campaign?.adsEase ?? 0) > 0.55;
+        player.canSprint = !campaign?.ads && !campaign?.reloading;
+        player.reloadMoveScale = campaign?.reloading ? 0.86 : 1;
+        player.update(dt, level);
+        campaign?.update(dt, player.spreadRecoveryMultiplier);
         stanceText.textContent = player.prone ? '卧倒' : player.crouch ? '蹲伏' : '站立';
         stanceText.classList.toggle('prone', player.prone);
 
-        if (firing && combat?.shoot(player.camera)) {
+        if (
+          firing &&
+          combat?.shoot(player.camera, viewmodel?.getMuzzleWorld(_muzzleWorld) || undefined)
+        ) {
           viewmodel?.punch();
           crosshair?.onFire();
         }
@@ -330,7 +319,6 @@ async function boot() {
         for (const obj of level.objectives) {
           if (!objectiveState.get(obj.id) && player.position.z <= obj.trigger) {
             markObjective(obj.id);
-            currentObjectiveIndex++;
           }
         }
         if (!reachedExit && player.position.z <= -84) {
@@ -349,17 +337,24 @@ async function boot() {
       lightningOn = lightning;
       SFX.update(dt);
       if (crosshair && controlsEnabled && introState === 'done' && !completed) {
-        const speed = player.horizontalSpeed;
-        const baseSpread = campaign?.activeWeapon?.def.spreadBase || 0.0018;
-        crosshair.update(dt, speed, baseSpread, false);
-      }
-      if (campaign?.activeWeapon && campaign.adsEase > 0.001) {
-        player.camera.fov = THREE.MathUtils.lerp(
-          player.camera.fov,
-          campaign.activeWeapon.def.adsFov,
-          campaign.adsEase
-        );
-        player.camera.updateProjectionMatrix();
+        const w = campaign?.activeWeapon;
+        if (w) {
+          const stanceSpread = player.prone
+            ? Math.max(0.28, w.def.crouchMult * 0.55)
+            : player.crouch
+              ? w.def.crouchMult
+              : 1;
+          crosshair.update(dt, {
+            baseSpread: w.def.spreadBase,
+            moveSpread: w.def.moveSpread,
+            speed: player.horizontalSpeed,
+            airSpread: player.grounded ? 0 : w.def.airSpread,
+            stanceSpread,
+            adsEase: campaign?.adsEase ?? 0,
+            reloading: campaign?.reloading ?? false,
+            spread: w.spread,
+          });
+        }
       }
       const scoped =
         controlsEnabled &&
@@ -432,7 +427,7 @@ document.addEventListener('mousedown', (event) => {
   if (document.pointerLockElement !== canvas) return;
   firing = true;
   if (campaign) campaign.triggerReleased = true;
-  if (combat?.shoot(player.camera)) {
+  if (combat?.shoot(player.camera, viewmodel?.getMuzzleWorld(_muzzleWorld) || undefined)) {
     viewmodel?.punch();
     crosshair?.onFire();
   }
@@ -467,6 +462,15 @@ addEventListener('contextmenu', (event) => {
 addEventListener('keydown', (event) => {
   SFX.init();
   keys.add(event.code);
+  if (
+    (event.code === 'ShiftLeft' || event.code === 'ShiftRight') &&
+    keys.has('KeyW') &&
+    introState === 'done' &&
+    controlsEnabled &&
+    !cutscene
+  ) {
+    campaign?.cancelReload();
+  }
   if (event.code === 'Space') player.input.jump = true;
   if (
     event.code === 'KeyZ' &&
@@ -550,7 +554,6 @@ addEventListener('keydown', (event) => {
       if (!done) {
         /* skip() marks it finished synchronously on next update; force cleanup */
         cutscene = null;
-        cutsceneKind = null;
         cutsceneBars.hidden = true;
         if (completed) completePanel.hidden = false;
         else {

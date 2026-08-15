@@ -158,7 +158,7 @@ const movement = await page.evaluate(() => {
   player.vel.z = 0;
   player.onGround = true;
   player.vel.y = 0;
-  player.pos.y = level.terrainHeight(player.pos.x, player.pos.z) + player.height * 0.5;
+  player.pos.y = level.groundY(player.pos.x, player.pos.z);
   player.jumpHeld = false;
   player.input.jump = true;
   settle(1);

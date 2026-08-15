@@ -58,6 +58,7 @@ export class P0Combat {
   private rayRight = new THREE.Vector3();
   private rayUp = new THREE.Vector3();
   private activeCamera: THREE.PerspectiveCamera | null = null;
+  private worldTargets: THREE.Object3D[] = [];
   private flashEl = document.getElementById('p0Flash') as HTMLDivElement;
   private damageEl = document.getElementById('p0Damage') as HTMLDivElement;
   private hitEl = document.getElementById('p0Hitmark') as HTMLDivElement;
@@ -68,6 +69,7 @@ export class P0Combat {
     this.level = level;
     this.rules = rules;
     this.player = player;
+    this.collectWorldTargets();
     this.spawnPickups();
     rules.updateHud();
     this.updateHealthHud();
@@ -79,6 +81,20 @@ export class P0Combat {
     if (this.enemiesSpawned) return;
     this.enemiesSpawned = true;
     this.spawnEnemies();
+  }
+
+  /** Bullets stop on the same rendered solid meshes the player collides with.
+      Rain streaks (Points) and HUD-ish pickups are excluded. */
+  private collectWorldTargets() {
+    for (const child of this.level.group.children) {
+      if ((child as THREE.Mesh).isMesh) this.worldTargets.push(child);
+    }
+    for (const child of this.scene.children) {
+      if (child === this.level.group) continue;
+      child.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) this.worldTargets.push(o);
+      });
+    }
   }
 
   private spawnPickups() {
@@ -140,10 +156,11 @@ export class P0Combat {
         baseZ: pos.z,
         patrolT: Math.random() * Math.PI * 2,
         fireT: 1 + Math.random() * 2,
+        burst: 0,
         soldier,
         strafeDir: Math.random() > 0.5 ? 1 : -1,
         engaged: false,
-        reactionT: 0.35 + Math.random() * 0.55,
+        reactionT: 0.35 + Math.random() * 0.45,
         hitFlash: 0,
         deathT: 0,
         walkPhase: Math.random() * Math.PI * 2,
@@ -183,6 +200,7 @@ export class P0Combat {
         baseZ: pos.z,
         patrolT: Math.random() * Math.PI * 2,
         fireT: 0.8 + Math.random() * 0.6,
+        burst: 0,
         soldier,
         strafeDir: Math.random() > 0.5 ? 1 : -1,
         engaged: true,
@@ -229,20 +247,39 @@ export class P0Combat {
     return true;
   }
 
-  shoot(camera: THREE.PerspectiveCamera): boolean {
+  /** Gunfire carries exactly like the single-player squad alert radius. */
+  private alertEnemiesToGunfire(radius: number) {
+    const p = this.player.position;
+    for (const e of this.enemies) {
+      if (!e.alive || e.engaged) continue;
+      const d = Math.hypot(e.root.position.x - p.x, e.root.position.z - p.z);
+      if (d <= radius) {
+        e.engaged = true;
+        e.reactionT = Math.min(e.reactionT, 0.35 + Math.random() * 0.45);
+      }
+    }
+  }
+
+  shoot(camera: THREE.PerspectiveCamera, muzzle?: THREE.Vector3): boolean {
     const w = this.rules.activeWeapon;
-    if (!w || !this.rules.tryFire(this.rules.triggerReleased)) return false;
+    if (!w) return false;
+    const magBefore = w.mag;
+    if (!this.rules.tryFire(this.rules.triggerReleased)) return false;
+    const firedRound = w.mag !== magBefore;
+    if (!firedRound) return false;
     const def = w.def;
-    const stanceScale = this.player.prone ? 0.56 : this.player.crouch ? 0.8 : 1;
+    const stanceScale = this.player.stanceRecoilMultiplier;
     const recoilScale = THREE.MathUtils.lerp(1, def.adsRecoil, this.rules.adsEase) * stanceScale;
     this.player.applyRecoil(
       def.camPitch,
       def.camYaw,
       def.fovKick,
       recoilScale,
-      Math.max(0, this.rules.burstCount - 1)
+      Math.max(0, this.rules.burstCount - 1),
+      def.shakeAmt
     );
     SFX.gunshot(def.sound);
+    this.alertEnemiesToGunfire(def.noise);
     camera.getWorldDirection(this.rayDir);
     this.rayRight.crossVectors(this.rayDir, camera.up).normalize();
     this.rayUp.crossVectors(this.rayRight, this.rayDir).normalize();
@@ -256,8 +293,12 @@ export class P0Combat {
     spread *= THREE.MathUtils.lerp(1, def.adsSpread, this.rules.adsEase);
 
     const pellets = Math.max(1, def.pellets);
-    const objects: THREE.Object3D[] = [];
-    for (const e of this.enemies) if (e.alive) objects.push(e.root);
+    const objects: THREE.Object3D[] = [...this.worldTargets];
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      objects.push(e.soldier.hbHead, e.soldier.hbBody, e.soldier.hbLegs);
+    }
+    const origin = muzzle || camera.position;
 
     for (let i = 0; i < pellets; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -270,28 +311,41 @@ export class P0Combat {
       this.raycaster.set(camera.position, dir);
       this.raycaster.far = def.range;
       const hits = this.raycaster.intersectObjects(objects, true);
-      const end = hits.length
-        ? hits[0].point.clone()
-        : camera.position.clone().addScaledVector(dir, def.range);
-      if (i === 0 || Math.random() < 0.45)
-        spawnTracer(this.scene, camera.position, end, def.id === 'sr7' ? 0xfff3c8 : 0xffd27a);
-      if (!hits.length) continue;
-      let node: THREE.Object3D | null = hits[0].object;
+      const hit = hits[0] || null;
+      const end = hit ? hit.point.clone() : camera.position.clone().addScaledVector(dir, def.range);
+      if (i === 0 || pellets <= 3 || Math.random() < 0.45)
+        spawnTracer(this.scene, origin, end, def.id === 'sr7' ? 0xfff3c8 : 0xffd27a);
+      if (!hit) continue;
+
+      const mel = camera.matrixWorld.elements;
+      const panAt = (x: number, z: number) =>
+        THREE.MathUtils.clamp(
+          ((x - camera.position.x) * mel[0] + (z - camera.position.z) * mel[2]) / 14,
+          -1,
+          1
+        );
+      let node: THREE.Object3D | null = hit.object;
       let headshot = false;
+      let legshot = false;
       while (node && !node.userData.enemyRoot) {
-        if (node.name === 'soldierHead') headshot = true;
+        if (node.name === 'soldierHead' || node.name === 'hbHead') headshot = true;
+        if (node.name === 'hbLegs') legshot = true;
         node = node.parent;
       }
       const enemy = node ? this.enemies.find((e) => e.root === node) : null;
-      if (!enemy?.alive) continue;
-      if (losBlocked(camera.position, enemy.root.position, this.level.obstacles)) continue;
-      const dist = hits[0].distance;
+      if (!enemy?.alive) {
+        SFX.impactWall(panAt(hit.point.x, hit.point.z), hit.distance);
+        continue;
+      }
+      if (losBlocked(camera.position, hit.point, this.level.obstacles)) continue;
+      const dist = hit.distance;
       const falloff = THREE.MathUtils.clamp(
         1 - Math.max(0, dist - def.falloffStart) / Math.max(1, def.falloffRange),
         def.falloffMin,
         1
       );
-      const dmg = def.baseDamage * falloff * (headshot ? def.headMult : 1);
+      const partMult = headshot ? def.headMult : legshot ? 0.78 : 1;
+      const dmg = def.baseDamage * falloff * partMult;
       enemy.health -= dmg;
       enemy.hitFlash = 0.12;
       enemy.flinch = Math.min(1, enemy.flinch + (headshot ? 0.9 : 0.55));
@@ -299,20 +353,13 @@ export class P0Combat {
       enemy.reactionT = Math.min(enemy.reactionT, 0.25);
       enemy.soldier.tag.draw(enemy.health, enemy.engaged);
       SFX.hitBeep(headshot);
-      const mel = camera.matrixWorld.elements;
-      const pan = THREE.MathUtils.clamp(
-        ((enemy.root.position.x - camera.position.x) * mel[0] +
-          (enemy.root.position.z - camera.position.z) * mel[2]) /
-          14,
-        -1,
-        1
-      );
-      SFX.impactFlesh(pan, dist);
+      SFX.impactFlesh(panAt(enemy.root.position.x, enemy.root.position.z), dist);
       if (this.hitEl) {
         this.hitEl.classList.add('on');
         setTimeout(() => this.hitEl.classList.remove('on'), 90);
       }
-      if (enemy.health <= 0) this.killEnemy(enemy, pan, dist);
+      if (enemy.health <= 0)
+        this.killEnemy(enemy, panAt(enemy.root.position.x, enemy.root.position.z), dist);
     }
     return true;
   }

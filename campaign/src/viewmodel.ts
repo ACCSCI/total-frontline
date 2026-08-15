@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { CampaignRules } from './campaign';
+import { easeInOutCubic, easeOutCubic } from './easing';
 import {
   buildModernAK,
   buildP90,
@@ -24,6 +25,7 @@ interface BuiltRig {
   bolt?: THREE.Object3D;
   knob?: THREE.Object3D;
   chargeHandle?: THREE.Object3D;
+  muzzle?: THREE.Object3D;
   basePos?: THREE.Vector3;
   baseRot?: THREE.Vector3;
   adsPos?: THREE.Vector3;
@@ -142,7 +144,7 @@ export class ViewmodelRig {
       let slide = 0;
       if (w.pumpT > 0) {
         const t = 1 - w.pumpT / (w.def.pumpTime || 0.62);
-        slide = t < 0.45 ? this.easeOut(t / 0.45) : 1 - this.easeOut((t - 0.45) / 0.55);
+        slide = t < 0.45 ? easeOutCubic(t / 0.45) : 1 - easeOutCubic((t - 0.45) / 0.55);
       }
       rig.forend.position.z += slide * 0.105;
       pz += slide * 0.028;
@@ -154,16 +156,16 @@ export class ViewmodelRig {
       if (w.boltT > 0) {
         const t = 1 - w.boltT / (w.def.boltTime || 1.5);
         lift =
-          t < 0.14 ? this.easeOut(t / 0.14) : t > 0.74 ? 1 - this.easeOut((t - 0.74) / 0.26) : 1;
+          t < 0.14 ? easeOutCubic(t / 0.14) : t > 0.74 ? 1 - easeOutCubic((t - 0.74) / 0.26) : 1;
         back =
           t < 0.14
             ? 0
             : t < 0.4
-              ? this.easeOut((t - 0.14) / 0.26)
+              ? easeOutCubic((t - 0.14) / 0.26)
               : t < 0.56
                 ? 1
                 : t < 0.74
-                  ? 1 - this.easeInOut((t - 0.56) / 0.18)
+                  ? 1 - easeInOutCubic((t - 0.56) / 0.18)
                   : 0;
       }
       rig.bolt.position.z += back * 0.125;
@@ -193,7 +195,7 @@ export class ViewmodelRig {
         this.rules.switchT > draw
           ? 1 - (this.rules.switchT - draw) / 0.14
           : this.rules.switchT / draw;
-      const e = this.easeOut(THREE.MathUtils.clamp(k, 0, 1));
+      const e = easeOutCubic(THREE.MathUtils.clamp(k, 0, 1));
       py -= e * 0.4;
       pz += e * 0.1;
       rx += e * 1.05;
@@ -209,7 +211,7 @@ export class ViewmodelRig {
       adsPos.z + breathe * 0.5
     );
     this.aimRot.set(adsRot.x + swayX * 0.15, adsRot.y + swayY * 0.12, adsRot.z);
-    const ae = this.ease(this.rules.adsEase);
+    const ae = this.rules.adsEase;
     this.pos.lerpVectors(this.hipPos, this.aimPos, ae);
     this.rot.lerpVectors(this.hipRot, this.aimRot, ae);
 
@@ -241,6 +243,13 @@ export class ViewmodelRig {
   resize() {
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.updateProjectionMatrix();
+  }
+
+  /** World-space muzzle transform, updated by the last `update()` call. */
+  getMuzzleWorld(out: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.rig?.muzzle) return null;
+    this.rig.muzzle.getWorldPosition(out);
+    return out;
   }
 
   private swapModel(id: string) {
@@ -284,6 +293,7 @@ export class ViewmodelRig {
       'bolt',
       'knob',
       'chargeHandle',
+      'muzzle',
     ] as const) {
       const obj = built[key];
       if (obj)
@@ -306,12 +316,12 @@ export class ViewmodelRig {
     const total = Math.max(0.001, this.rules.reloadDuration);
     const t = THREE.MathUtils.clamp(1 - this.rules.reloadT / total, 0, 1);
     const dip =
-      t < 0.22 ? this.easeOut(t / 0.22) : t < 0.72 ? 1 : 1 - this.easeInOut((t - 0.72) / 0.28);
+      t < 0.22 ? easeOutCubic(t / 0.22) : t < 0.72 ? 1 : 1 - easeInOutCubic((t - 0.72) / 0.28);
 
     if (id === 'm4') {
       const present =
-        this.easeOut(THREE.MathUtils.clamp(t / 0.12, 0, 1)) *
-        (1 - this.easeInOut(THREE.MathUtils.clamp((t - 0.86) / 0.14, 0, 1)));
+        easeOutCubic(THREE.MathUtils.clamp(t / 0.12, 0, 1)) *
+        (1 - easeInOutCubic(THREE.MathUtils.clamp((t - 0.86) / 0.14, 0, 1)));
       const flick = Math.sin(Math.PI * THREE.MathUtils.clamp((t - 0.035) / 0.13, 0, 1));
       this.hipPos.x = THREE.MathUtils.lerp(this.hipPos.x, 0.015, present) - flick * 0.065;
       this.hipPos.y += present * 0.12;
@@ -335,7 +345,7 @@ export class ViewmodelRig {
         );
       }
       if (rig.newMag) {
-        const insert = 1 - this.easeInOut(THREE.MathUtils.clamp((t - 0.47) / 0.23, 0, 1));
+        const insert = 1 - easeInOutCubic(THREE.MathUtils.clamp((t - 0.47) / 0.23, 0, 1));
         rig.newMag.visible = t >= 0.42 && t < 0.9;
         rig.newMag.position.x -= insert * 0.16;
         rig.newMag.position.y -= insert * 0.32;
@@ -344,8 +354,8 @@ export class ViewmodelRig {
         rig.newMag.rotation.z += insert * 0.38;
         if (rig.leftHand && t >= 0.42) {
           const hold =
-            this.easeInOut(THREE.MathUtils.clamp((t - 0.42) / 0.06, 0, 1)) *
-            (1 - this.easeInOut(THREE.MathUtils.clamp((t - 0.79) / 0.1, 0, 1)));
+            easeInOutCubic(THREE.MathUtils.clamp((t - 0.42) / 0.06, 0, 1)) *
+            (1 - easeInOutCubic(THREE.MathUtils.clamp((t - 0.79) / 0.1, 0, 1)));
           this.poseHand(
             rig,
             rig.newMag,
@@ -378,8 +388,8 @@ export class ViewmodelRig {
           !!this.rules.activeWeapon?.reloadState?.inserted;
     } else if (id === 'ak12') {
       const side =
-        this.easeOut(THREE.MathUtils.clamp(t / 0.13, 0, 1)) *
-        (1 - this.easeInOut(THREE.MathUtils.clamp((t - 0.9) / 0.1, 0, 1)));
+        easeOutCubic(THREE.MathUtils.clamp(t / 0.13, 0, 1)) *
+        (1 - easeInOutCubic(THREE.MathUtils.clamp((t - 0.9) / 0.1, 0, 1)));
       this.hipPos.x = THREE.MathUtils.lerp(this.hipPos.x, 0.035, side);
       this.hipPos.y += side * 0.105;
       this.hipPos.z -= side * 0.095;
@@ -441,14 +451,14 @@ export class ViewmodelRig {
           0,
           1
         );
-        const feed = this.easeInOut(THREE.MathUtils.clamp(cycle / 0.78, 0, 1));
+        const feed = easeInOutCubic(THREE.MathUtils.clamp(cycle / 0.78, 0, 1));
         rig.reloadShell.visible = elapsed >= loadStart && shellIndex < rounds;
         rig.reloadShell.position.set(-0.18 * (1 - feed), -0.2 * (1 - feed) - 0.075, -0.015);
         rig.reloadShell.rotation.set(0.25, 0, -0.45 * (1 - feed));
         if (rig.leftHand) {
           const blend =
-            this.easeInOut(THREE.MathUtils.clamp(cycle / 0.14, 0, 1)) *
-            (1 - this.easeInOut(THREE.MathUtils.clamp((cycle - 0.76) / 0.18, 0, 1)));
+            easeInOutCubic(THREE.MathUtils.clamp(cycle / 0.14, 0, 1)) *
+            (1 - easeInOutCubic(THREE.MathUtils.clamp((cycle - 0.76) / 0.18, 0, 1)));
           this.poseHand(
             rig,
             rig.reloadShell,
@@ -471,8 +481,8 @@ export class ViewmodelRig {
       }
     } else if (id === 'sr7') {
       const side =
-        this.easeOut(THREE.MathUtils.clamp(t / 0.18, 0, 1)) *
-        (1 - this.easeInOut(THREE.MathUtils.clamp((t - 0.86) / 0.135, 0, 1)));
+        easeOutCubic(THREE.MathUtils.clamp(t / 0.18, 0, 1)) *
+        (1 - easeInOutCubic(THREE.MathUtils.clamp((t - 0.86) / 0.135, 0, 1)));
       this.hipPos.x = THREE.MathUtils.lerp(this.hipPos.x, 0.045, side);
       this.hipPos.y += side * 0.08;
       this.hipPos.z -= side * 0.07;
@@ -580,20 +590,5 @@ export class ViewmodelRig {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
     }
-  }
-
-  private easeOut(t: number) {
-    const k = THREE.MathUtils.clamp(t, 0, 1);
-    return 1 - (1 - k) ** 3;
-  }
-
-  private easeInOut(t: number) {
-    const k = THREE.MathUtils.clamp(t, 0, 1);
-    return k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2;
-  }
-
-  private ease(t: number) {
-    const k = THREE.MathUtils.clamp(t, 0, 1);
-    return k * k * (3 - 2 * k);
   }
 }

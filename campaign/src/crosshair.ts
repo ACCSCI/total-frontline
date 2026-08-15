@@ -57,13 +57,30 @@ export class Crosshair {
     fireT = XH.fireHold;
   }
 
-  update(dt: number, speed: number, baseSpread: number, firing: boolean) {
+  update(
+    dt: number,
+    state: {
+      baseSpread: number;
+      moveSpread: number;
+      speed: number;
+      airSpread: number;
+      stanceSpread: number;
+      adsEase: number;
+      reloading: boolean;
+      spread: number;
+    }
+  ) {
     if (this.hidden) return;
-    let target = baseSpread + (speed / 7) * 0.0022 + 0.0018;
-    target *= XH.baseScale;
+    /* The exact single-player crosshair formula: weapon base + movement + air,
+       scaled through stance, then ADS, with the real accumulated fire spread. */
+    let target =
+      (state.baseSpread + (state.speed / 7) * state.moveSpread + state.airSpread) *
+      XH.baseScale *
+      state.stanceSpread;
+    if (state.reloading) target += XH.reloadErr;
     fireT = Math.max(0, fireT - dt);
-    if (firing) fireT = XH.fireHold;
-    if (fireT > 0) target += 0.003 * XH.fireScale;
+    if (fireT > 0) target += (state.spread - state.baseSpread) * XH.fireScale * state.stanceSpread;
+    target *= 1 - 0.45 * state.adsEase;
     target = Math.min(XH.maxSpread, Math.max(0, target));
     crossSpread = target > crossSpread ? target : damp(crossSpread, target, XH.fallRate, dt);
     const iA = Math.round((XH.inGap + crossSpread) * XH.dpr);

@@ -12,12 +12,13 @@
     "typecheck:campaign": "npm --prefix campaign run typecheck",
     "check:lines": "bun scripts/check-file-lines.mjs",
     "check:migration": "bun scripts/check-migration.mjs",
+    "check:alignment": "bun scripts/check-alignment.mjs",
     "check": "biome check . && bun scripts/check-file-lines.mjs",
     "format": "biome format --write .",
     "serve": "python -m http.server 8123 --directory dist",
     "serve:legacy": "python -m http.server 8123 --directory dist",
     "serve:campaign": "npm --prefix campaign run preview",
-    "verify": "npm run typecheck && npm run build && bun scripts/check-migration.mjs"
+    "verify": "npm run typecheck && npm run build && bun scripts/check-migration.mjs && bun scripts/check-alignment.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",

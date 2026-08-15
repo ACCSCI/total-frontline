@@ -332,10 +332,11 @@ const SFX = (() => {
     if (weaponId === 'ks12') kind = 'shotgun';
     else if (weaponId === 'sr7') kind = 'sniper';
     else if (weaponId === 'p9') kind = 'pistol';
+    const delay = dist / 340;
     const n = (o: Parameters<typeof noiseBurst>[0]) =>
-      noiseBurst({ ...o, gain: (o.gain || 0) * vol, pan });
+      noiseBurst({ ...o, gain: (o.gain || 0) * vol, pan, delay: (o.delay || 0) + delay });
     const t = (o: Parameters<typeof toneBurst>[0]) =>
-      toneBurst({ ...o, gain: (o.gain || 0) * vol, pan });
+      toneBurst({ ...o, gain: (o.gain || 0) * vol, pan, delay: (o.delay || 0) + delay });
 
     if (kind === 'rifle') {
       n({ type: 'highpass', freq: 4200, gain: 0.62, dur: 0.022, atk: 0.0004 });
@@ -484,6 +485,11 @@ const SFX = (() => {
     noiseBurst({ type: 'lowpass', freq: 500, gain: 0.1, dur: 0.09 });
   }
 
+  function land(f: number) {
+    noiseBurst({ type: 'lowpass', freq: 300, gain: 0.1 + 0.28 * f, dur: 0.16, atk: 0.002 });
+    toneBurst({ type: 'sine', f0: 110, f1: 44, dur: 0.13, gain: 0.14 * f });
+  }
+
   function weaponSwap() {
     noiseBurst({ type: 'lowpass', freq: 820, gain: 0.24, dur: 0.11 });
     toneBurst({ type: 'square', f0: 280, f1: 95, dur: 0.07, gain: 0.1, lp: 1700, delay: 0.045 });
@@ -541,6 +547,7 @@ const SFX = (() => {
     shellDrop,
     killChime,
     jump,
+    land,
     reloadStage,
     dryFire,
     pumpSound,

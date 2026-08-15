@@ -1,105 +1,12 @@
 import * as THREE from 'three';
 import loadoutData from '../../shared/loadout.json';
-import weaponsData from '../../shared/weapons.json';
 import { SFX } from './sfx';
 import type { SoldierRig } from './soldier';
+import type { WeaponDef } from './weapon-defs';
+import { PRIMARY_WEAPONS } from './weapon-defs';
 
-export interface WeaponDef {
-  id: string;
-  name: string;
-  sound: string;
-  magSize: number;
-  reserve: number;
-  maxReserve: number;
-  damage: number;
-  baseDamage: number;
-  headMult: number;
-  pellets: number;
-  rpm: number;
-  auto: boolean;
-  semiToggle: boolean;
-  pumpTime?: number;
-  boltTime?: number;
-  campaignReserve?: number;
-  spreadBase: number;
-  spreadMax: number;
-  spreadShot: number;
-  spreadRecover: number;
-  moveSpread: number;
-  airSpread: number;
-  crouchMult: number;
-  recoilKick: number;
-  recoilRot: number;
-  camPitch: number;
-  camYaw: number;
-  adsRecoil: number;
-  fovKick: number;
-  reloadTime: number;
-  tacticalReloadTime: number;
-  drawTime: number;
-  shakeAmt: number;
-  range: number;
-  falloffStart: number;
-  falloffRange: number;
-  falloffMin: number;
-  adsFov: number;
-  adsSpread: number;
-  adsTime: number;
-  scope?: boolean;
-  noise: number;
-  shellBig: boolean;
-}
-
-const rawWeapons = weaponsData.weapons as unknown as Record<
-  string,
-  Partial<WeaponDef> & { legacyId?: string }
->;
-
-export const PRIMARY_WEAPONS: Record<string, WeaponDef> = {};
-for (const [id, w] of Object.entries(rawWeapons)) {
-  PRIMARY_WEAPONS[id] = {
-    ...w,
-    id,
-    name: w.name ?? id,
-    sound: w.sound ?? id,
-    magSize: w.magSize ?? 30,
-    reserve: w.campaignReserve ?? w.reserve ?? 120,
-    maxReserve: w.maxReserve ?? w.reserve ?? 120,
-    damage: w.damage ?? 25,
-    baseDamage: w.damage ?? 25,
-    headMult: w.headMult ?? 1.8,
-    pellets: w.pellets ?? 1,
-    rpm: w.rpm ?? 700,
-    auto: w.auto ?? false,
-    semiToggle: w.semiToggle ?? false,
-    spreadBase: w.spreadBase ?? 0.0055,
-    spreadMax: w.spreadMax ?? 0.06,
-    spreadShot: w.spreadShot ?? 0.005,
-    spreadRecover: w.spreadRecover ?? 0.08,
-    moveSpread: w.moveSpread ?? 0.01,
-    airSpread: w.airSpread ?? 0.02,
-    crouchMult: w.crouchMult ?? 0.65,
-    recoilKick: w.recoilKick ?? 0.04,
-    recoilRot: w.recoilRot ?? 0.06,
-    camPitch: w.camPitch ?? 0.012,
-    camYaw: w.camYaw ?? 0.005,
-    adsRecoil: w.adsRecoil ?? 0.55,
-    fovKick: w.fovKick ?? 0.6,
-    reloadTime: w.reloadTime ?? 1.5,
-    tacticalReloadTime: w.tacticalReloadTime ?? (w.reloadTime ?? 1.5) * 0.78,
-    drawTime: w.drawTime ?? 0.3,
-    shakeAmt: w.shakeAmt ?? 0.2,
-    range: w.range ?? 120,
-    falloffStart: w.falloffStart ?? 40,
-    falloffRange: w.falloffRange ?? 50,
-    falloffMin: w.falloffMin ?? 0.5,
-    adsFov: w.adsFov ?? 50,
-    adsSpread: w.adsSpread ?? 0.4,
-    adsTime: w.adsTime ?? 0.2,
-    noise: w.noise ?? 34,
-    shellBig: w.shellBig ?? false,
-  };
-}
+export type { WeaponDef } from './weapon-defs';
+export { PRIMARY_WEAPONS } from './weapon-defs';
 
 export interface ReloadState {
   progress: number;
@@ -148,6 +55,7 @@ export interface Enemy {
   baseZ: number;
   patrolT: number;
   fireT: number;
+  burst: number;
   soldier: SoldierRig;
   strafeDir: number;
   engaged: boolean;
@@ -195,6 +103,7 @@ export class CampaignRules {
   switchTo = -1;
   holsterAt = 0.14;
   ads = false;
+  adsK = 0;
   adsEase = 0;
   fireT = 0;
   triggerReleased = true;
@@ -240,7 +149,7 @@ export class CampaignRules {
     return this.switchTo >= 0 ? this.slots[this.switchTo] : null;
   }
 
-  update(dt: number) {
+  update(dt: number, stanceRecovery = 1) {
     this.fireT = Math.max(0, this.fireT - dt);
     this.burstIdle += dt;
     if (this.burstIdle > 0.32) this.burstCount = 0;
@@ -260,10 +169,7 @@ export class CampaignRules {
         w.boltT -= dt;
         if (w.boltT <= 0) w.boltT = 0;
       }
-      w.spread = Math.max(
-        w.def.spreadBase,
-        w.spread - w.def.spreadRecover * dt * this.stanceRecovery()
-      );
+      w.spread = Math.max(w.def.spreadBase, w.spread - w.def.spreadRecover * dt * stanceRecovery);
     }
 
     if (this.switchT > 0) {
@@ -278,11 +184,9 @@ export class CampaignRules {
 
     const aimWant = this.ads && !this.reloading && !this.switching;
     const aimSpeed = 1 / (this.activeWeapon?.def.adsTime || 0.2);
-    this.adsEase = THREE.MathUtils.clamp(
-      this.adsEase + (aimWant ? aimSpeed : -aimSpeed) * dt,
-      0,
-      1
-    );
+    this.adsK = THREE.MathUtils.clamp(this.adsK + (aimWant ? aimSpeed : -aimSpeed) * dt, 0, 1);
+    const k = this.adsK;
+    this.adsEase = k * k * (3 - 2 * k);
   }
 
   switchSlot(index: number) {
@@ -292,6 +196,8 @@ export class CampaignRules {
       return;
     }
     if (this.reloading) this.interruptReload();
+    const current = this.activeWeapon;
+    if (current) current.boltT = 0;
     this.ads = false;
     this.switchTo = index;
     this.holsterAt = 0.14;
@@ -321,7 +227,8 @@ export class CampaignRules {
     if (this.fireT > 0 || this.reloading || this.switching || w.pumpT > 0 || w.boltT > 0)
       return false;
     if (!w.def.auto && !triggerReleased) return false;
-    if (this.interruptShotgunReloadForFire(w)) return true;
+    this.interruptShotgunReloadForFire(w);
+    if (this.reloadBlocksFire(w)) return false;
 
     if (w.mag <= 0) {
       if (triggerReleased) {
@@ -329,7 +236,7 @@ export class CampaignRules {
         this.triggerReleased = false;
       }
       if (w.reserve > 0 && !this.reloading) this.startReload();
-      return false;
+      return true;
     }
 
     w.mag--;
@@ -363,7 +270,16 @@ export class CampaignRules {
 
   startReload() {
     const w = this.activeWeapon;
-    if (!w || w.mag >= w.def.magSize || w.reserve <= 0 || this.reloading || this.switching) return;
+    if (
+      !w ||
+      w.mag >= w.def.magSize ||
+      w.reserve <= 0 ||
+      this.reloading ||
+      this.switching ||
+      w.pumpT > 0 ||
+      w.boltT > 0
+    )
+      return;
     this.ads = false;
     if (w.reloadState) {
       this.restoreReload(w.reloadState);
@@ -522,6 +438,14 @@ export class CampaignRules {
     if (this.reloadT <= 0) this.finishReload();
   }
 
+  private reloadBlocksFire(w: CarriedWeapon): boolean {
+    const state = w.reloadState;
+    if (!state || state.active || w.def.id === 'ks12') return false;
+    const mechanicallyOpen = !state.inserted || (state.empty && !state.actionDone);
+    if (mechanicallyOpen) this.startReload();
+    return mechanicallyOpen;
+  }
+
   private interruptShotgunReloadForFire(w: CarriedWeapon): boolean {
     if (w.def.id !== 'ks12' || this.reloadT <= 0 || w.mag <= 0) return false;
     this.interruptReload();
@@ -534,8 +458,9 @@ export class CampaignRules {
     w.reloadState = null;
   }
 
-  private stanceRecovery() {
-    return 1;
+  /** Shift-sprint cancels a reload exactly like the single-player input. */
+  cancelReload() {
+    this.interruptReload();
   }
 
   toggleAim() {

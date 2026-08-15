@@ -29,6 +29,7 @@ const legacyBuild = await read('../scripts/build.mjs');
 const legacyMovement = await read('../src/generated-movement.ts');
 const legacyWeapons = await read('../src/generated-weapons.ts');
 const campaignRules = await read('../campaign/src/campaign.ts');
+const campaignWeaponDefs = await read('../campaign/src/weapon-defs.ts');
 const campaignCombat = await read('../campaign/src/combat.ts');
 const campaignLevel = await read('../campaign/src/level.ts');
 const campaignPlayer = await read('../campaign/src/player.ts');
@@ -66,7 +67,11 @@ check(
 );
 check(legacyMovement.includes('SHARED_MOVEMENT'), 'generated legacy movement bridge exists');
 check(legacyWeapons.includes('SHARED_WEAPON_BASE'), 'generated legacy weapon bridge exists');
-check(campaignRules.includes('../../shared/weapons.json'), 'campaign rules consume shared weapons');
+check(
+  campaignRules.includes('../../shared/weapons.json') ||
+    campaignWeaponDefs.includes('../../shared/weapons.json'),
+  'campaign rules consume shared weapons'
+);
 check(
   campaignCombat.includes('../../shared/missions.json'),
   'campaign combat consumes shared missions'
