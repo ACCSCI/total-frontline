@@ -154,6 +154,14 @@ export interface Enemy {
   reactionT: number;
   hitFlash: number;
   deathT: number;
+  walkPhase: number;
+  speed: number;
+  flinch: number;
+  aimPitch: number;
+  combatBlend: number;
+  gunDropped: boolean;
+  gunVel: THREE.Vector3 | null;
+  gunAV: THREE.Vector3 | null;
 }
 
 export interface ThrowableProjectile {

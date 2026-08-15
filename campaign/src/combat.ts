@@ -8,6 +8,7 @@ import {
   PRIMARY_WEAPONS,
   type ThrowableProjectile,
 } from './campaign';
+import { animateEnemyDeath, losBlocked, spawnTracer, updateCampaignEnemy } from './combat-utils';
 import type { P0Level } from './level';
 import type { FirstPersonPlayer } from './player';
 import { SFX } from './sfx';
@@ -42,7 +43,7 @@ function makePickupRoot(color: number, label: string): THREE.Group {
 
 export class P0Combat {
   private scene: THREE.Scene;
-  private level: P0Level;
+  level: P0Level;
   private player: FirstPersonPlayer;
   rules: CampaignRules;
   pickups: Pickup[] = [];
@@ -56,6 +57,7 @@ export class P0Combat {
   private rayDir = new THREE.Vector3();
   private rayRight = new THREE.Vector3();
   private rayUp = new THREE.Vector3();
+  private activeCamera: THREE.PerspectiveCamera | null = null;
   private flashEl = document.getElementById('p0Flash') as HTMLDivElement;
   private damageEl = document.getElementById('p0Damage') as HTMLDivElement;
   private hitEl = document.getElementById('p0Hitmark') as HTMLDivElement;
@@ -144,6 +146,14 @@ export class P0Combat {
         reactionT: 0.35 + Math.random() * 0.55,
         hitFlash: 0,
         deathT: 0,
+        walkPhase: Math.random() * Math.PI * 2,
+        speed: 0,
+        flinch: 0,
+        aimPitch: 0,
+        combatBlend: 0,
+        gunDropped: false,
+        gunVel: null,
+        gunAV: null,
       });
     }
   }
@@ -179,6 +189,14 @@ export class P0Combat {
         reactionT: 0.2,
         hitFlash: 0,
         deathT: 0,
+        walkPhase: Math.random() * Math.PI * 2,
+        speed: 0,
+        flinch: 0,
+        aimPitch: 0,
+        combatBlend: 0,
+        gunDropped: false,
+        gunVel: null,
+        gunAV: null,
       });
     }
   }
@@ -252,6 +270,11 @@ export class P0Combat {
       this.raycaster.set(camera.position, dir);
       this.raycaster.far = def.range;
       const hits = this.raycaster.intersectObjects(objects, true);
+      const end = hits.length
+        ? hits[0].point.clone()
+        : camera.position.clone().addScaledVector(dir, def.range);
+      if (i === 0 || Math.random() < 0.45)
+        spawnTracer(this.scene, camera.position, end, def.id === 'sr7' ? 0xfff3c8 : 0xffd27a);
       if (!hits.length) continue;
       let node: THREE.Object3D | null = hits[0].object;
       let headshot = false;
@@ -261,7 +284,7 @@ export class P0Combat {
       }
       const enemy = node ? this.enemies.find((e) => e.root === node) : null;
       if (!enemy?.alive) continue;
-      if (this.losBlocked(camera.position, enemy.root.position)) continue;
+      if (losBlocked(camera.position, enemy.root.position, this.level.obstacles)) continue;
       const dist = hits[0].distance;
       const falloff = THREE.MathUtils.clamp(
         1 - Math.max(0, dist - def.falloffStart) / Math.max(1, def.falloffRange),
@@ -271,39 +294,38 @@ export class P0Combat {
       const dmg = def.baseDamage * falloff * (headshot ? def.headMult : 1);
       enemy.health -= dmg;
       enemy.hitFlash = 0.12;
+      enemy.flinch = Math.min(1, enemy.flinch + (headshot ? 0.9 : 0.55));
       enemy.engaged = true;
       enemy.reactionT = Math.min(enemy.reactionT, 0.25);
       enemy.soldier.tag.draw(enemy.health, enemy.engaged);
+      SFX.hitBeep(headshot);
+      const mel = camera.matrixWorld.elements;
+      const pan = THREE.MathUtils.clamp(
+        ((enemy.root.position.x - camera.position.x) * mel[0] +
+          (enemy.root.position.z - camera.position.z) * mel[2]) /
+          14,
+        -1,
+        1
+      );
+      SFX.impactFlesh(pan, dist);
       if (this.hitEl) {
         this.hitEl.classList.add('on');
         setTimeout(() => this.hitEl.classList.remove('on'), 90);
       }
-      if (enemy.health <= 0) this.killEnemy(enemy);
+      if (enemy.health <= 0) this.killEnemy(enemy, pan, dist);
     }
     return true;
   }
 
-  private losBlocked(a: THREE.Vector3, b: THREE.Vector3): boolean {
-    const dx = b.x - a.x;
-    const dz = b.z - a.z;
-    const lenSq = dx * dx + dz * dz;
-    if (lenSq < 1e-6) return false;
-    for (const o of this.level.obstacles) {
-      const t = THREE.MathUtils.clamp(((o.x - a.x) * dx + (o.z - a.z) * dz) / lenSq, 0, 1);
-      const cx = a.x + dx * t - o.x;
-      const cz = a.z + dz * t - o.z;
-      const r = o.r * 0.85;
-      if (cx * cx + cz * cz < r * r) return true;
-    }
-    return false;
-  }
-
-  private killEnemy(enemy: Enemy) {
+  private killEnemy(enemy: Enemy, pan = 0, dist = 0) {
     if (!enemy.alive) return;
     enemy.alive = false;
     enemy.deathT = 0.75;
     enemy.health = 0;
+    enemy.soldier.tag.sprite.visible = false;
     enemy.soldier.tag.draw(0, false);
+    SFX.killChime();
+    SFX.enemyDeath(pan, dist);
     this.kills++;
     const x = enemy.root.position.x;
     const z = enemy.root.position.z;
@@ -321,7 +343,6 @@ export class P0Combat {
       );
     }
     void y;
-    SFX.enemyDown();
   }
 
   throwGrenade(kind: 'lethal' | 'tactical', camera: THREE.PerspectiveCamera): boolean {
@@ -393,6 +414,7 @@ export class P0Combat {
   }
 
   update(dt: number, playerPos: THREE.Vector3, camera: THREE.PerspectiveCamera) {
+    this.activeCamera = camera;
     const now = performance.now();
     /* pickups bob and proximity logic */
     for (const p of this.pickups) {
@@ -441,11 +463,7 @@ export class P0Combat {
     for (const e of this.enemies) {
       if (!e.alive) {
         if (e.deathT > 0) {
-          e.deathT -= dt;
-          const k = 1 - Math.max(0, e.deathT / 0.75);
-          e.root.rotation.x = Math.min(1.35, k * 1.55);
-          e.root.position.y =
-            this.level.groundY(e.root.position.x, e.root.position.z) + 0.02 - k * 0.18;
+          animateEnemyDeath(this.scene, e, dt);
           if (e.deathT <= 0) e.root.visible = false;
         }
         continue;
@@ -456,104 +474,32 @@ export class P0Combat {
   }
 
   private updateEnemy(e: Enemy, dt: number, playerPos: THREE.Vector3) {
-    e.phase += dt;
-    const px = e.root.position.x;
-    const pz = e.root.position.z;
-    const dx = playerPos.x - px;
-    const dz = playerPos.z - pz;
-    const dist = Math.hypot(dx, dz) || 1;
-    e.root.visible = dist < 52;
-    e.root.rotation.y = Math.atan2(dx, dz);
-
-    const canSee = dist < 30 && !this.losBlocked(e.root.position, playerPos);
-    if (canSee) {
-      e.reactionT -= dt;
-      if (e.reactionT <= 0) e.engaged = true;
-    } else {
-      e.engaged = false;
-      e.reactionT = 0.35 + Math.random() * 0.55;
-    }
-
-    let mx = 0;
-    let mz = 0;
-    if (e.engaged) {
-      /* strafe around the player while holding a mid-range band, the same
-         readable pressure curve as the legacy firefights */
-      const tangentX = -dz / dist;
-      const tangentZ = dx / dist;
-      const ideal = 8 + (e.baseX % 5);
-      const radial = dist > ideal + 2.5 ? 1 : dist < ideal - 2.5 ? -0.7 : 0;
-      mx = (dx / dist) * radial + tangentX * e.strafeDir;
-      mz = (dz / dist) * radial + tangentZ * e.strafeDir;
-      const ml = Math.hypot(mx, mz) || 1;
-      mx = (mx / ml) * 1.55;
-      mz = (mz / ml) * 1.55;
-      if (Math.random() < dt * 0.45) e.strafeDir *= -1;
-
-      e.fireT -= dt;
-      if (e.fireT <= 0) {
-        e.fireT = 0.95 + Math.random() * 1.35;
-        if (dist < 30) this.hurtPlayer(5 + Math.random() * 4);
-      }
-    } else {
-      e.patrolT += dt;
-      const tx = e.baseX + Math.sin(e.patrolT * 0.55) * 2.4;
-      const tz = e.baseZ + Math.cos(e.patrolT * 0.4) * 1.8;
-      const pdx = tx - px;
-      const pdz = tz - pz;
-      const pl = Math.hypot(pdx, pdz);
-      if (pl > 0.3) {
-        mx = (pdx / pl) * 0.7;
-        mz = (pdz / pl) * 0.7;
-      }
-    }
-
-    e.root.position.x += mx * dt;
-    e.root.position.z += mz * dt;
-    this.avoidObstacles(e.root.position);
-    e.root.position.x = THREE.MathUtils.clamp(
-      e.root.position.x,
-      this.level.bounds.minX + 0.7,
-      this.level.bounds.maxX - 0.7
-    );
-    e.root.position.z = THREE.MathUtils.clamp(
-      e.root.position.z,
-      this.level.bounds.minZ + 0.7,
-      this.level.bounds.maxZ - 0.7
-    );
-    e.root.position.y = this.level.groundY(e.root.position.x, e.root.position.z) + 0.02;
-
-    const moving = Math.hypot(mx, mz) > 0.05;
-    const step = Math.sin(e.phase * (moving ? 3.2 : 0.8)) * (moving ? 0.55 : 0.12);
-    for (let li = 0; li < 2; li++) {
-      const s = li === 0 ? 1 : -1;
-      e.soldier.legs[li].hip.rotation.x = step * s;
-      e.soldier.legs[li].knee.rotation.x = Math.max(0, -step * s) * 0.7;
-      e.soldier.arms[li].sh.rotation.x = e.engaged ? -0.75 : -step * s * 0.5;
-      e.soldier.arms[li].el.rotation.x = e.engaged ? -0.45 : -0.1;
-    }
-    e.hitFlash = Math.max(0, e.hitFlash - dt);
-    e.root.scale.setScalar(1 + e.hitFlash * 0.6);
+    updateCampaignEnemy(this, e, dt, playerPos);
   }
 
-  private avoidObstacles(pos: THREE.Vector3) {
-    for (const o of this.level.obstacles) {
-      const ddx = pos.x - o.x;
-      const ddz = pos.z - o.z;
-      const min = o.r + 0.5;
-      const d2 = ddx * ddx + ddz * ddz;
-      if (d2 >= min * min || d2 < 1e-6) continue;
-      const d = Math.sqrt(d2);
-      pos.x = o.x + (ddx / d) * min;
-      pos.z = o.z + (ddz / d) * min;
-    }
-  }
-
-  private hurtPlayer(amount: number) {
+  hurtPlayer(amount: number, shooter?: Enemy) {
     if (this.rules.playerHealth <= 0) return;
     this.rules.playerHealth = Math.max(0, this.rules.playerHealth - amount);
     this.updateHealthHud();
-    SFX.enemyShot();
+    let pan = 0;
+    let dist = 0;
+    if (shooter && this.activeCamera) {
+      const cam = this.activeCamera;
+      const mel = cam.matrixWorld.elements;
+      dist = Math.hypot(
+        shooter.root.position.x - cam.position.x,
+        shooter.root.position.z - cam.position.z
+      );
+      pan = THREE.MathUtils.clamp(
+        ((shooter.root.position.x - cam.position.x) * mel[0] +
+          (shooter.root.position.z - cam.position.z) * mel[2]) /
+          14,
+        -1,
+        1
+      );
+    }
+    SFX.gunshotAt('m4', pan, dist);
+    SFX.damageTaken();
     if (this.damageEl) {
       this.damageEl.classList.add('on');
       setTimeout(() => this.damageEl.classList.remove('on'), 140);

@@ -8,6 +8,7 @@
    - forest air rumble
    - generated thunder (low sweep + crack), scheduled on its own clock
    ------------------------------------------------------------------------- */
+import { installAmbience } from './sfx-env';
 
 const SFX = (() => {
   let ctx: AudioContext | null = null;
@@ -44,7 +45,7 @@ const SFX = (() => {
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
 
-    startAmbience();
+    installAmbience(ctx, master, noiseSource, panner);
     ready = true;
   }
 
@@ -64,123 +65,6 @@ const SFX = (() => {
     return p;
   }
 
-  /* Close rain: four independent noise voices, each with its own playback rate,
-     filter centre and slow amplitude LFO. The incommensurate LFO rates break up
-     the looped-buffer periodicity that made the first pass sound machine-like.
-     On top of the beds, update() sprinkles random droplet transients. */
-  function addRain() {
-    if (!ctx || !master) return;
-    for (let i = 0; i < 4; i++) {
-      const hp = ctx.createBiquadFilter();
-      hp.type = 'highpass';
-      hp.frequency.value = 360 + i * 130;
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 1300 + i * 320;
-      lp.Q.value = 0.45;
-      const g = ctx.createGain();
-      g.gain.value = 0.02 + i * 0.005;
-
-      const src = noiseSource(0.83 + Math.random() * 0.31);
-      if (!src) continue;
-      src.connect(hp);
-      hp.connect(lp);
-      lp.connect(g);
-
-      const pan = panner(-0.5 + i * 0.32 + (Math.random() - 0.5) * 0.2);
-      if (pan) {
-        g.connect(pan);
-        pan.connect(master);
-      } else {
-        g.connect(master);
-      }
-
-      const lfo = ctx.createOscillator();
-      lfo.type = 'sine';
-      lfo.frequency.value = 0.11 + i * 0.067 + Math.random() * 0.05;
-      const amt = ctx.createGain();
-      amt.gain.value = 0.011 + i * 0.003;
-      lfo.connect(amt);
-      amt.connect(g.gain);
-
-      src.start();
-      lfo.start();
-    }
-  }
-
-  /* Wind: a moving band of noise whose centre and stereo position drift. */
-  function addWind() {
-    if (!ctx || !master) return;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 340;
-    bp.Q.value = 0.8;
-    const g = ctx.createGain();
-    g.gain.value = 0.055;
-
-    const src = noiseSource(0.63);
-    if (!src) return;
-    src.connect(bp);
-    bp.connect(g);
-    const pan = panner(0);
-    if (pan) {
-      g.connect(pan);
-      pan.connect(master);
-    } else {
-      g.connect(master);
-    }
-
-    const fLfo = ctx.createOscillator();
-    fLfo.frequency.value = 0.05;
-    const fAmt = ctx.createGain();
-    fAmt.gain.value = 170;
-    fLfo.connect(fAmt);
-    fAmt.connect(bp.frequency);
-
-    const pLfo = ctx.createOscillator();
-    pLfo.frequency.value = 0.083;
-    const pAmt = ctx.createGain();
-    pAmt.gain.value = 0.6;
-    pLfo.connect(pAmt);
-    if (pan) pAmt.connect(pan.pan);
-
-    const aLfo = ctx.createOscillator();
-    aLfo.frequency.value = 0.11;
-    const aAmt = ctx.createGain();
-    aAmt.gain.value = 0.022;
-    aLfo.connect(aAmt);
-    aAmt.connect(g.gain);
-
-    src.start();
-    fLfo.start();
-    pLfo.start();
-    aLfo.start();
-  }
-
-  /* Forest air: very low filtered noise so the scene never sounds dead. */
-  function addAir() {
-    if (!ctx || !master) return;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 150;
-    lp.Q.value = 0.6;
-    const g = ctx.createGain();
-    g.gain.value = 0.04;
-    const src = noiseSource(0.8);
-    if (!src) return;
-    src.connect(lp);
-    lp.connect(g);
-    g.connect(master);
-    src.start();
-  }
-
-  function startAmbience() {
-    addRain();
-    addWind();
-    addAir();
-  }
-
-  /* One-shot filtered noise burst, same shape as the main game's SFX.noise. */
   function noiseBurst(o: {
     type?: BiquadFilterType;
     freq?: number;
@@ -251,6 +135,7 @@ const SFX = (() => {
     type?: OscillatorType;
     delay?: number;
     lp?: number;
+    pan?: number;
   }) {
     if (!ctx || !master) return;
     const t0 = ctx.currentTime + (o.delay || 0);
@@ -263,15 +148,22 @@ const SFX = (() => {
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, o.gain || 0.1), t0 + 0.05);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + (o.dur || 1.2));
     osc.connect(g);
+    let out: AudioNode = g;
     if (o.lp) {
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
       lp.frequency.value = o.lp;
-      g.connect(lp);
-      lp.connect(master);
-    } else {
-      g.connect(master);
+      out.connect(lp);
+      out = lp;
     }
+    if (o.pan !== undefined) {
+      const pan = panner(o.pan);
+      if (pan) {
+        out.connect(pan);
+        out = pan;
+      }
+    }
+    out.connect(master);
     osc.start(t0);
     osc.stop(t0 + (o.dur || 1.2) + 0.05);
   }
@@ -402,7 +294,7 @@ const SFX = (() => {
         gain: 0.3,
         dur: 0.16,
         atk: 0.004,
-        sweep: 830,
+        sweep: 40,
         delay: 0.05,
       });
       toneBurst({ type: 'square', f0: 520, f1: 250, dur: 0.1, gain: 0.07, lp: 2600, delay: 0.04 });
@@ -429,32 +321,34 @@ const SFX = (() => {
   }
 
   function gunshot(weaponId = 'm4') {
+    return gunshotAt(weaponId, 0, 0);
+  }
+
+  function gunshotAt(weaponId: string, pan = 0, dist = 0) {
+    const d = Math.max(0, dist || 0);
+    const vol = Math.max(0.018, 0.64 / (1 + (d / 11) ** 1.65));
     const ak = weaponId === 'ak12';
     let kind: 'rifle' | 'shotgun' | 'sniper' | 'pistol' = 'rifle';
     if (weaponId === 'ks12') kind = 'shotgun';
     else if (weaponId === 'sr7') kind = 'sniper';
     else if (weaponId === 'p9') kind = 'pistol';
+    const n = (o: Parameters<typeof noiseBurst>[0]) =>
+      noiseBurst({ ...o, gain: (o.gain || 0) * vol, pan });
+    const t = (o: Parameters<typeof toneBurst>[0]) =>
+      toneBurst({ ...o, gain: (o.gain || 0) * vol, pan });
 
     if (kind === 'rifle') {
-      noiseBurst({ type: 'highpass', freq: 4200, gain: 0.62, dur: 0.022, atk: 0.0004 });
-      noiseBurst({
-        type: 'bandpass',
-        freq: 2100,
-        q: 0.7,
-        gain: 0.9,
-        dur: 0.14,
-        atk: 0.001,
-        sweep: 600,
-      });
-      noiseBurst({ type: 'lowpass', freq: 420, gain: 0.66, dur: 0.11, atk: 0.001 });
-      toneBurst({
+      n({ type: 'highpass', freq: 4200, gain: 0.62, dur: 0.022, atk: 0.0004 });
+      n({ type: 'bandpass', freq: 2100, q: 0.7, gain: 0.9, dur: 0.14, atk: 0.001, sweep: 600 });
+      n({ type: 'lowpass', freq: 420, gain: 0.66, dur: 0.11, atk: 0.001 });
+      t({
         type: 'triangle',
         f0: ak ? 175 : 210,
         f1: ak ? 40 : 48,
         dur: 0.1,
         gain: ak ? 0.5 : 0.42,
       });
-      toneBurst({
+      t({
         type: 'sine',
         f0: ak ? 68 : 82,
         f1: ak ? 32 : 38,
@@ -462,65 +356,128 @@ const SFX = (() => {
         gain: ak ? 0.42 : 0.34,
         lp: 200,
       });
-      noiseBurst({ type: 'highpass', freq: 1400, gain: 0.1, dur: 0.42, atk: 0.02, delay: 0.02 });
+      n({ type: 'highpass', freq: 1400, gain: 0.1, dur: 0.42, atk: 0.02, delay: 0.02 });
     } else if (kind === 'shotgun') {
-      noiseBurst({ type: 'highpass', freq: 3600, gain: 0.5, dur: 0.026, atk: 0.0004 });
-      noiseBurst({ type: 'lowpass', freq: 900, gain: 1.05, dur: 0.42, atk: 0.001, sweep: 170 });
-      noiseBurst({ type: 'bandpass', freq: 1500, q: 0.6, gain: 0.6, dur: 0.12, atk: 0.001 });
-      toneBurst({ type: 'sine', f0: 110, f1: 30, dur: 0.32, gain: 0.72 });
-      toneBurst({ type: 'sine', f0: 62, f1: 28, dur: 0.2, gain: 0.4, lp: 150 });
-      noiseBurst({ type: 'highpass', freq: 900, gain: 0.16, dur: 0.7, atk: 0.03, delay: 0.02 });
+      n({ type: 'highpass', freq: 3600, gain: 0.5, dur: 0.026, atk: 0.0004 });
+      n({ type: 'lowpass', freq: 900, gain: 1.05, dur: 0.42, atk: 0.001, sweep: 170 });
+      n({ type: 'bandpass', freq: 1500, q: 0.6, gain: 0.6, dur: 0.12, atk: 0.001 });
+      t({ type: 'sine', f0: 110, f1: 30, dur: 0.32, gain: 0.72 });
+      t({ type: 'sine', f0: 62, f1: 28, dur: 0.2, gain: 0.4, lp: 150 });
+      n({ type: 'highpass', freq: 900, gain: 0.16, dur: 0.7, atk: 0.03, delay: 0.02 });
     } else if (kind === 'sniper') {
-      noiseBurst({ type: 'highpass', freq: 5200, gain: 0.85, dur: 0.014, atk: 0.0002 });
-      noiseBurst({ type: 'highpass', freq: 3200, gain: 1, dur: 0.05, atk: 0.0005 });
-      noiseBurst({
-        type: 'bandpass',
-        freq: 1250,
-        q: 0.5,
-        gain: 1.05,
-        dur: 0.3,
-        atk: 0.0008,
-        sweep: 340,
-      });
-      noiseBurst({ type: 'lowpass', freq: 260, gain: 0.95, dur: 0.24, atk: 0.001 });
-      toneBurst({ type: 'triangle', f0: 150, f1: 34, dur: 0.28, gain: 0.62 });
-      toneBurst({ type: 'sine', f0: 58, f1: 26, dur: 0.3, gain: 0.44, lp: 150 });
-      noiseBurst({
-        type: 'bandpass',
-        freq: 900,
-        q: 0.8,
-        gain: 0.3,
-        dur: 1.25,
-        atk: 0.05,
-        delay: 0.05,
-      });
-      noiseBurst({ type: 'highpass', freq: 2200, gain: 0.14, dur: 0.85, atk: 0.03, delay: 0.02 });
+      n({ type: 'highpass', freq: 5200, gain: 0.85, dur: 0.014, atk: 0.0002 });
+      n({ type: 'highpass', freq: 3200, gain: 1, dur: 0.05, atk: 0.0005 });
+      n({ type: 'bandpass', freq: 1250, q: 0.5, gain: 1.05, dur: 0.3, atk: 0.0008, sweep: 340 });
+      n({ type: 'lowpass', freq: 260, gain: 0.95, dur: 0.24, atk: 0.001 });
+      t({ type: 'triangle', f0: 150, f1: 34, dur: 0.28, gain: 0.62 });
+      t({ type: 'sine', f0: 58, f1: 26, dur: 0.3, gain: 0.44, lp: 150 });
+      n({ type: 'bandpass', freq: 900, q: 0.8, gain: 0.3, dur: 1.25, atk: 0.05, delay: 0.05 });
+      n({ type: 'highpass', freq: 2200, gain: 0.14, dur: 0.85, atk: 0.03, delay: 0.02 });
     } else {
-      noiseBurst({ type: 'highpass', freq: 4600, gain: 0.42, dur: 0.016, atk: 0.0003 });
-      noiseBurst({
-        type: 'bandpass',
-        freq: 1700,
-        q: 1.1,
-        gain: 0.7,
-        dur: 0.11,
-        atk: 0.001,
-        sweep: 520,
-      });
-      noiseBurst({ type: 'lowpass', freq: 340, gain: 0.4, dur: 0.075, atk: 0.001 });
-      toneBurst({ type: 'square', f0: 280, f1: 70, dur: 0.06, gain: 0.24, lp: 1600 });
-      toneBurst({ type: 'sine', f0: 96, f1: 44, dur: 0.1, gain: 0.2, lp: 220 });
-      noiseBurst({ type: 'highpass', freq: 1800, gain: 0.07, dur: 0.28, atk: 0.02, delay: 0.02 });
+      n({ type: 'highpass', freq: 4600, gain: 0.42, dur: 0.016, atk: 0.0003 });
+      n({ type: 'bandpass', freq: 1700, q: 1.1, gain: 0.7, dur: 0.11, atk: 0.001, sweep: 520 });
+      n({ type: 'lowpass', freq: 340, gain: 0.4, dur: 0.075, atk: 0.001 });
+      t({ type: 'square', f0: 280, f1: 70, dur: 0.06, gain: 0.24, lp: 1600 });
+      t({ type: 'sine', f0: 96, f1: 44, dur: 0.1, gain: 0.2, lp: 220 });
+      n({ type: 'highpass', freq: 1800, gain: 0.07, dur: 0.28, atk: 0.02, delay: 0.02 });
     }
-  }
-
-  function enemyShot() {
-    noiseBurst({ type: 'lowpass', freq: 900, sweep: 180, gain: 0.24, dur: 0.18, atk: 0.002 });
-    toneBurst({ f0: 150, f1: 58, gain: 0.1, dur: 0.14, type: 'sine' });
   }
 
   function enemyDown() {
     toneBurst({ f0: 210, f1: 58, gain: 0.14, dur: 0.34, type: 'sine' });
     noiseBurst({ type: 'lowpass', freq: 620, sweep: 120, gain: 0.16, dur: 0.3, atk: 0.004 });
+  }
+
+  function enemyDeath(pan = 0, dist = 0) {
+    const v = Math.max(0.15, Math.min(1, 1 - dist / 50));
+    toneBurst({
+      type: 'sawtooth',
+      f0: 240 + Math.random() * 90,
+      f1: 60 + Math.random() * 35,
+      dur: 0.55,
+      gain: 0.13 * v,
+      lp: 1100,
+      pan,
+    });
+    noiseBurst({
+      type: 'lowpass',
+      freq: 500,
+      gain: 0.22 * v,
+      dur: 0.35,
+      atk: 0.03,
+      pan,
+      delay: 0.18,
+    });
+  }
+
+  function hitBeep(headshot: boolean) {
+    toneBurst({ type: 'sine', f0: headshot ? 1900 : 1350, dur: 0.045, gain: 0.13 });
+    if (headshot) toneBurst({ type: 'sine', f0: 2550, dur: 0.05, gain: 0.11, delay: 0.045 });
+  }
+
+  function impactWall(pan = 0, dist = 0) {
+    const v = Math.max(0.15, Math.min(1, 1 - dist / 60));
+    noiseBurst({
+      type: 'bandpass',
+      freq: 2200 + Math.random() * 1600,
+      q: 2.5,
+      gain: 0.26 * v,
+      dur: 0.07,
+      atk: 0.001,
+      pan,
+    });
+    noiseBurst({ type: 'lowpass', freq: 700, gain: 0.14 * v, dur: 0.09, pan });
+    if (Math.random() < 0.28)
+      toneBurst({
+        type: 'sine',
+        f0: 2400 + Math.random() * 1000,
+        f1: 700 + Math.random() * 400,
+        dur: 0.3,
+        gain: 0.05 * v,
+        pan,
+      });
+  }
+
+  function impactFlesh(pan = 0, dist = 0) {
+    const v = Math.max(0.2, Math.min(1, 1 - dist / 60));
+    noiseBurst({
+      type: 'lowpass',
+      freq: 250 + Math.random() * 170,
+      gain: 0.42 * v,
+      dur: 0.13,
+      atk: 0.001,
+      pan,
+    });
+    toneBurst({ type: 'sine', f0: 160, f1: 60, dur: 0.1, gain: 0.16 * v, pan });
+  }
+
+  function damageTaken() {
+    noiseBurst({ type: 'lowpass', freq: 220, gain: 0.3, dur: 0.2, atk: 0.002 });
+    toneBurst({ type: 'sine', f0: 150, f1: 52, dur: 0.22, gain: 0.2 });
+  }
+
+  function shellDrop(pan = 0) {
+    noiseBurst({
+      type: 'bandpass',
+      freq: 3000 + Math.random() * 2200,
+      q: 6,
+      gain: 0.1,
+      dur: 0.09,
+      pan,
+    });
+    toneBurst({
+      type: 'triangle',
+      f0: 1500 + Math.random() * 1100,
+      f1: 700 + Math.random() * 500,
+      dur: 0.1,
+      gain: 0.045,
+      pan,
+    });
+  }
+
+  function killChime() {
+    toneBurst({ type: 'sine', f0: 900, dur: 0.07, gain: 0.11 });
+    toneBurst({ type: 'sine', f0: 1350, dur: 0.11, gain: 0.11, delay: 0.06 });
   }
 
   function jump() {
@@ -574,8 +531,15 @@ const SFX = (() => {
     explosion,
     flashbang,
     gunshot,
-    enemyShot,
+    gunshotAt,
     enemyDown,
+    enemyDeath,
+    hitBeep,
+    impactWall,
+    impactFlesh,
+    damageTaken,
+    shellDrop,
+    killChime,
     jump,
     reloadStage,
     dryFire,
