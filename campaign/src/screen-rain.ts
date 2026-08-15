@@ -49,7 +49,14 @@ function makeLensDropSprite(base: number): HTMLCanvasElement {
   g.restore();
 
   /* refractive body: brighter toward the light, nearly transparent edges */
-  const body = g.createRadialGradient(cx - rx * 0.3, cy - ry * 0.4, rx * 0.1, cx, cy, Math.max(rx, ry) * 1.15);
+  const body = g.createRadialGradient(
+    cx - rx * 0.3,
+    cy - ry * 0.4,
+    rx * 0.1,
+    cx,
+    cy,
+    Math.max(rx, ry) * 1.15
+  );
   body.addColorStop(0, 'rgba(215,235,248,0.55)');
   body.addColorStop(0.35, 'rgba(175,210,232,0.34)');
   body.addColorStop(0.7, 'rgba(150,195,224,0.16)');
@@ -60,7 +67,14 @@ function makeLensDropSprite(base: number): HTMLCanvasElement {
   g.fill();
 
   /* inner lens highlight */
-  const hi = g.createRadialGradient(cx - rx * 0.45, cy - ry * 0.45, 0, cx - rx * 0.45, cy - ry * 0.45, rx * 0.55);
+  const hi = g.createRadialGradient(
+    cx - rx * 0.45,
+    cy - ry * 0.45,
+    0,
+    cx - rx * 0.45,
+    cy - ry * 0.45,
+    rx * 0.55
+  );
   hi.addColorStop(0, 'rgba(255,255,255,0.85)');
   hi.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = hi;

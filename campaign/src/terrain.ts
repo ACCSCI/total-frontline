@@ -26,7 +26,7 @@ export function terrainHeight(x: number, z: number): number {
      Once |z| leaves the mission area, large rolling hills begin so the far
      ground is never a flat sheet with an obvious edge. */
   const side = Math.max(0, Math.abs(x) - 8) / 42;
-  const rise = Math.pow(side, 2.1) * 22;
+  const rise = side ** 2.1 * 22;
   const wave = Math.sin(z * 0.08) * 0.35 + Math.cos(x * 0.22 + z * 0.05) * 0.28;
   const fine = noise2(x * 0.13, z * 0.17) * 0.75 - 0.25;
   const far = Math.min(1, Math.max(0, Math.abs(z) - 100) / 240);
@@ -51,7 +51,12 @@ export interface SnapOptions {
   mode?: 'min' | 'center' | 'median' | 'max';
 }
 
-export function snapObjectToTerrain(object: THREE.Object3D, x: number, z: number, options: SnapOptions = {}) {
+export function snapObjectToTerrain(
+  object: THREE.Object3D,
+  x: number,
+  z: number,
+  options: SnapOptions = {}
+) {
   object.position.set(x, 0, z);
   object.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(object);
@@ -62,7 +67,7 @@ export function snapObjectToTerrain(object: THREE.Object3D, x: number, z: number
   if (mode === 'center') {
     support = groundAt(x, z);
   } else {
-    const points = options.points && options.points.length ? options.points : [[x, z]];
+    const points = options.points?.length ? options.points : [[x, z]];
     const heights = points.map(([px, pz]) => groundAt(px, pz));
     if (mode === 'max') {
       support = Math.max(...heights);
@@ -94,4 +99,35 @@ export function windAt(time: number): number {
     Math.sin(time * 0.19 + 1.4) * w.secondaryAmp +
     Math.sin(time * 1.31) * w.gustAmp
   );
+}
+
+export function makeTerrainMaterial(
+  colorA: THREE.ColorRepresentation,
+  colorB: THREE.ColorRepresentation
+) {
+  return new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.96,
+    metalness: 0.0,
+    side: THREE.FrontSide,
+  });
+}
+
+export function paintGround(geometry: THREE.BufferGeometry) {
+  const pos = geometry.attributes.position as THREE.BufferAttribute;
+  const colors = new Float32Array(pos.count * 3);
+  const cA = new THREE.Color(0x30352f);
+  const cB = new THREE.Color(0x4a493c);
+  const cMud = new THREE.Color(0x514536);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    const n = noise2(x * 0.09, z * 0.11);
+    const c = cA.clone().lerp(cB, THREE.MathUtils.clamp(n, 0, 1));
+    if (Math.abs(x) < 4) c.lerp(cMud, 0.55);
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 }

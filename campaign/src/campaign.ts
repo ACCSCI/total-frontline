@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import type { SoldierRig } from './soldier';
-import { SFX } from './sfx';
-import weaponsData from '../../shared/weapons.json';
 import loadoutData from '../../shared/loadout.json';
+import weaponsData from '../../shared/weapons.json';
+import { SFX } from './sfx';
+import type { SoldierRig } from './soldier';
 
 export interface WeaponDef {
   id: string;

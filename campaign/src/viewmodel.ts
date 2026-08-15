@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import type { CampaignRules } from './campaign';
-import type { FirstPersonPlayer } from './player';
 import {
+  buildModernAK,
+  buildP90,
   buildRifle,
   buildShotgun,
   buildSniper,
-  buildModernAK,
-  buildP90,
 } from './generated-viewmodels';
+import type { FirstPersonPlayer } from './player';
 
 interface BuiltRig {
   group: THREE.Group;
@@ -101,7 +101,11 @@ export class ViewmodelRig {
       basePos.y + bobY + swayY - stanceDrop - sprintDrop,
       basePos.z + breathe
     );
-    this.hipRot.set(baseRot.x + bobX * 0.35 + breathe, baseRot.y + swayX * 0.4, baseRot.z + bobY * 0.6 + sprintTilt);
+    this.hipRot.set(
+      baseRot.x + bobX * 0.35 + breathe,
+      baseRot.y + swayX * 0.4,
+      baseRot.z + bobY * 0.6 + sprintTilt
+    );
 
     this.aimPos.set(
       adsPos.x + swayX * 0.25,

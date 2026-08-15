@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 export interface CutsceneEvent {
-  at: number; /* normalized time 0..1 */
+  at: number /* normalized time 0..1 */;
   text?: string;
   clearText?: boolean;
   callback?: () => void;

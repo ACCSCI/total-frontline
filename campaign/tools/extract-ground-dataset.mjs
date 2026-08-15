@@ -1,10 +1,11 @@
-import puppeteer from 'puppeteer-core';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import puppeteer from 'puppeteer-core';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const annotationPath = process.argv[2];
-if (!annotationPath) throw new Error('usage: node tools/extract-ground-dataset.mjs <annotation.json>');
+if (!annotationPath)
+  throw new Error('usage: node tools/extract-ground-dataset.mjs <annotation.json>');
 
 const annotations = JSON.parse(await readFile(annotationPath, 'utf-8'));
 const targets = new Map(annotations.adjustments.map((a) => [a.key, a.delta]));
@@ -80,13 +81,16 @@ const dataset = await page.evaluate(
     }
     return rows;
   },
-  { keys, targets: Object.fromEntries(targets) },
+  { keys, targets: Object.fromEntries(targets) }
 );
 
 await browser.close();
 
 await mkdir(`${root}data`, { recursive: true });
 const out = `${root}data/ground-dataset.json`;
-await writeFile(out, JSON.stringify({ generatedAt: new Date().toISOString(), rows: dataset, errors }, null, 2));
+await writeFile(
+  out,
+  JSON.stringify({ generatedAt: new Date().toISOString(), rows: dataset, errors }, null, 2)
+);
 console.log(`wrote ${out} with ${dataset.length} rows`);
 if (errors.length) console.log('page errors:', errors);

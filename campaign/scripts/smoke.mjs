@@ -1,6 +1,6 @@
-import puppeteer from 'puppeteer-core';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import puppeteer from 'puppeteer-core';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const outDir = `${root}.smoke`;
@@ -34,8 +34,14 @@ page.on('console', (msg) => {
 page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
 
 const rendererParam = process.env.P0_RENDERER === 'webgl2' ? '?renderer=webgl2' : '';
-await page.goto(`http://127.0.0.1:4173/${rendererParam}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-await page.waitForFunction(() => !document.getElementById('loading') || document.getElementById('loading').hidden, { timeout: 60000 });
+await page.goto(`http://127.0.0.1:4173/${rendererParam}`, {
+  waitUntil: 'domcontentloaded',
+  timeout: 60000,
+});
+await page.waitForFunction(
+  () => !document.getElementById('loading') || document.getElementById('loading').hidden,
+  { timeout: 60000 }
+);
 
 /* Skip the real-time intro so the smoke test can observe player mode quickly. */
 await page.keyboard.down('Escape');
@@ -331,11 +337,12 @@ const fps = await page.evaluate(
       const t0 = performance.now();
       const tick = () => {
         frames++;
-        if (performance.now() - t0 >= 4000) resolve(Math.round((frames * 1000) / (performance.now() - t0)));
+        if (performance.now() - t0 >= 4000)
+          resolve(Math.round((frames * 1000) / (performance.now() - t0)));
         else requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
-    }),
+    })
 );
 
 await page.screenshot({ path: `${outDir}/p0-smoke.png` });
@@ -344,35 +351,49 @@ const failures = [];
 if (rules.slotCount !== 2) failures.push('campaign must have exactly two weapon slots');
 if (!rules.swapped || rules.after[0] !== 'ks12') failures.push('F weapon swap failed');
 if (rules.throwMax !== 3) failures.push('throwable cap is not 3');
-if (rules.throwBefore[0] !== 1 || rules.throwBefore[1] !== 1) failures.push('starting throwables are not 1/1');
-if (rules.throwAfter[0] !== 0 || rules.throwAfter[1] !== 0) failures.push('Q/G did not consume throwables');
+if (rules.throwBefore[0] !== 1 || rules.throwBefore[1] !== 1)
+  failures.push('starting throwables are not 1/1');
+if (rules.throwAfter[0] !== 0 || rules.throwAfter[1] !== 0)
+  failures.push('Q/G did not consume throwables');
 if (rules.pickups < 9) failures.push('mission pickups missing');
 if (rules.enemies < 6) failures.push('enemies missing');
 if (!rules.hasViewmodel || !rules.hasCrosshair) failures.push('viewmodel/crosshair missing');
 if (rules.hasKillstreakUi) failures.push('campaign exposes killstreak UI');
-if (movement.walkSpeed < 4.6 || movement.walkSpeed > 5.1) failures.push('walk speed does not match shared movement data');
-if (movement.sprintSpeed < 7.5 || movement.sprintSpeed > 8.2) failures.push('sprint speed does not match shared movement data');
+if (movement.walkSpeed < 4.6 || movement.walkSpeed > 5.1)
+  failures.push('walk speed does not match shared movement data');
+if (movement.sprintSpeed < 7.5 || movement.sprintSpeed > 8.2)
+  failures.push('sprint speed does not match shared movement data');
 if (movement.sprintFov < 80) failures.push('sprint FOV push is missing');
-if (!movement.firstJump || !movement.doubleJumped) failures.push('jump/double jump edge is missing');
-if (movement.crouchSpeed < 2.1 || movement.crouchSpeed > 2.6) failures.push('crouch speed does not match shared movement data');
-if (Math.abs(movement.crouchHeight - 1.08) > 0.03) failures.push('crouch height does not reach shared stance height');
-if (movement.proneSpeed < 0.95 || movement.proneSpeed > 1.35) failures.push('prone speed does not match shared movement data');
-if (Math.abs(movement.proneHeight - 0.58) > 0.03) failures.push('prone height does not reach shared stance height');
+if (!movement.firstJump || !movement.doubleJumped)
+  failures.push('jump/double jump edge is missing');
+if (movement.crouchSpeed < 2.1 || movement.crouchSpeed > 2.6)
+  failures.push('crouch speed does not match shared movement data');
+if (Math.abs(movement.crouchHeight - 1.08) > 0.03)
+  failures.push('crouch height does not reach shared stance height');
+if (movement.proneSpeed < 0.95 || movement.proneSpeed > 1.35)
+  failures.push('prone speed does not match shared movement data');
+if (Math.abs(movement.proneHeight - 0.58) > 0.03)
+  failures.push('prone height does not reach shared stance height');
 if (!movement.proneBlocksJump) failures.push('prone does not block jumping');
 if (!movement.proneBlocksSprint) failures.push('prone does not block sprinting');
 if (!movement.crouchFromProne) failures.push('crouch input does not rise out of prone');
 if (!movement.toggledProne || !movement.exitedProne) failures.push('Z prone toggle failed');
-if (stanceHud.text !== '卧倒' || !stanceHud.proneClass) failures.push('stance HUD does not report prone state');
+if (stanceHud.text !== '卧倒' || !stanceHud.proneClass)
+  failures.push('stance HUD does not report prone state');
 if (!systems.weaponData) failures.push('shared weapon handling data missing');
 if (!systems.fireCooldown) failures.push('weapon fire cooldown missing');
 if (systems.adsEase < 0.75 || !systems.adsReleased) failures.push('ADS toggle/ease failed');
-if (!systems.reloadStarted || !systems.reloadFinished || !systems.reloadFilled) failures.push('timed reload failed');
+if (!systems.reloadStarted || !systems.reloadFinished || !systems.reloadFilled)
+  failures.push('timed reload failed');
 if (systems.objectives !== 9) failures.push('mission objective chain is not 9 steps');
 if (systems.enemies < 26) failures.push('mission needs 26-34 hostiles');
 if (!systems.healthHud) failures.push('campaign health HUD missing');
 if (!state.backLink) failures.push('campaign back-to-main-menu link missing');
 
-console.log(JSON.stringify({ state, rules, movement, stanceHud, systems, fps, errors, failures }, null, 2));
+console.log(
+  JSON.stringify({ state, rules, movement, stanceHud, systems, fps, errors, failures }, null, 2)
+);
 await browser.close();
 
-if (errors.length || failures.length || !state.badge || !state.asset.includes('程序化')) process.exitCode = 1;
+if (errors.length || failures.length || !state.badge || !state.asset.includes('程序化'))
+  process.exitCode = 1;

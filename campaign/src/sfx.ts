@@ -22,7 +22,9 @@ const SFX = (() => {
       if (ctx.state === 'suspended') void ctx.resume();
       return;
     }
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
 
@@ -200,7 +202,8 @@ const SFX = (() => {
     const f = ctx.createBiquadFilter();
     f.type = o.type || 'bandpass';
     f.frequency.setValueAtTime(o.freq || 800, t0);
-    if (o.sweep) f.frequency.exponentialRampToValueAtTime(Math.max(30, o.sweep), t0 + (o.dur || 0.4));
+    if (o.sweep)
+      f.frequency.exponentialRampToValueAtTime(Math.max(30, o.sweep), t0 + (o.dur || 0.4));
     f.Q.value = o.q || 0.8;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t0);
@@ -240,7 +243,14 @@ const SFX = (() => {
     });
   }
 
-  function toneBurst(o: { f0?: number; f1?: number; gain?: number; dur?: number; type?: OscillatorType; delay?: number }) {
+  function toneBurst(o: {
+    f0?: number;
+    f1?: number;
+    gain?: number;
+    dur?: number;
+    type?: OscillatorType;
+    delay?: number;
+  }) {
     if (!ctx || !master) return;
     const t0 = ctx.currentTime + (o.delay || 0);
     const osc = ctx.createOscillator();
@@ -341,7 +351,14 @@ const SFX = (() => {
       p90: { freq: 1250, sweep: 300, gain: 0.34 },
       p9: { freq: 1150, sweep: 260, gain: 0.3 },
     }[weaponId] || { freq: 1050, sweep: 240, gain: 0.42 };
-    noiseBurst({ type: 'lowpass', freq: prof.freq, sweep: prof.sweep, gain: prof.gain, dur: 0.16, atk: 0.002 });
+    noiseBurst({
+      type: 'lowpass',
+      freq: prof.freq,
+      sweep: prof.sweep,
+      gain: prof.gain,
+      dur: 0.16,
+      atk: 0.002,
+    });
     toneBurst({ f0: 190, f1: 72, gain: 0.16, dur: 0.12, type: 'sine' });
     noiseBurst({ type: 'highpass', freq: 2600, gain: 0.13, dur: 0.05, atk: 0.0008, delay: 0.012 });
   }

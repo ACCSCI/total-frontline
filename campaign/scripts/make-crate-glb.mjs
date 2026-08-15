@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { Document, NodeIO, Primitive } from '@gltf-transform/core';
 import * as THREE from 'three';
-import { Document, Primitive, NodeIO } from '@gltf-transform/core';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const outDir = `${root}public/models`;
@@ -51,14 +51,36 @@ function addBox(doc, buffer, { size, offset, color, roughness = 0.8, metalness =
     .setMaterial(material);
 
   const mesh = doc.createMesh(`${color.toString(16)}-mesh`).addPrimitive(prim);
-  const node = doc.createNode(`${color.toString(16)}-node`).setMesh(mesh).setTranslation(offset);
+  const node = doc
+    .createNode(`${color.toString(16)}-node`)
+    .setMesh(mesh)
+    .setTranslation(offset);
   scene.addChild(node);
 }
 
-addBox(doc, buffer, { size: [1.0, 0.72, 0.62], offset: [0, 0.36, 0], color: new THREE.Color(0x3e4a36) });
-addBox(doc, buffer, { size: [1.04, 0.07, 0.66], offset: [0, 0.755, 0], color: new THREE.Color(0x24251f), metalness: 0.3 });
-addBox(doc, buffer, { size: [1.04, 0.08, 0.09], offset: [0, 0.39, -0.29], color: new THREE.Color(0x1b1c17), roughness: 0.6 });
-addBox(doc, buffer, { size: [1.04, 0.08, 0.09], offset: [0, 0.39, 0.29], color: new THREE.Color(0x1b1c17), roughness: 0.6 });
+addBox(doc, buffer, {
+  size: [1.0, 0.72, 0.62],
+  offset: [0, 0.36, 0],
+  color: new THREE.Color(0x3e4a36),
+});
+addBox(doc, buffer, {
+  size: [1.04, 0.07, 0.66],
+  offset: [0, 0.755, 0],
+  color: new THREE.Color(0x24251f),
+  metalness: 0.3,
+});
+addBox(doc, buffer, {
+  size: [1.04, 0.08, 0.09],
+  offset: [0, 0.39, -0.29],
+  color: new THREE.Color(0x1b1c17),
+  roughness: 0.6,
+});
+addBox(doc, buffer, {
+  size: [1.04, 0.08, 0.09],
+  offset: [0, 0.39, 0.29],
+  color: new THREE.Color(0x1b1c17),
+  roughness: 0.6,
+});
 
 const glb = await new NodeIO().writeBinary(doc);
 const file = `${outDir}/supply_crate.glb`;

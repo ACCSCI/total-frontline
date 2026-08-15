@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { P0Level } from './level';
 import { predictGroundDelta } from './ground-model';
+import type { P0Level } from './level';
 
 interface Selectable {
   key: string;
@@ -129,7 +129,11 @@ export class PropDebugger {
     for (let pass = 0; pass < 2; pass++) {
       for (const sel of this.selectables) {
         if (sel.root && (sel.kind === 'rock' || sel.kind === 'log')) {
-          const delta = THREE.MathUtils.clamp(predictGroundDelta(this.groundFeatures(sel.root)), -0.75, 0.05);
+          const delta = THREE.MathUtils.clamp(
+            predictGroundDelta(this.groundFeatures(sel.root)),
+            -0.75,
+            0.05
+          );
           if (Math.abs(delta) > 0.002) {
             sel.root.position.y += delta;
             fixed++;
@@ -299,11 +303,17 @@ export class PropDebugger {
     return node || object;
   }
 
-  private buildSelectables() {    const skip = new Set(['P0_GRAYBOX_GROUND', 'P0_HORIZON_BACKDROP']);
+  private buildSelectables() {
+    const skip = new Set(['P0_GRAYBOX_GROUND', 'P0_HORIZON_BACKDROP']);
     this.scene.traverse((obj) => {
       if ((obj as THREE.Points).isPoints || (obj as THREE.Light).isLight) return;
       if (!(obj as THREE.Mesh).isMesh) return;
-      if (skip.has(obj.name) || obj.name.startsWith('objective-gate') || obj.userData.debugKind === 'decor') return;
+      if (
+        skip.has(obj.name) ||
+        obj.name.startsWith('objective-gate') ||
+        obj.userData.debugKind === 'decor'
+      )
+        return;
 
       if (obj instanceof THREE.InstancedMesh) {
         obj.geometry.computeBoundingBox();

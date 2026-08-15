@@ -19,7 +19,14 @@ function CYLZ(rt: number, rb: number, h: number, seg: number) {
   return g;
 }
 
-function part(parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) {
+function part(
+  parent: THREE.Object3D,
+  geo: THREE.BufferGeometry,
+  mat: THREE.Material,
+  x: number,
+  y: number,
+  z: number
+) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
   /* Night forest enemies stay out of the shadow pass: thirty soldiers times
@@ -70,7 +77,15 @@ function makeCamoTexture(): THREE.CanvasTexture {
   return t;
 }
 
-function capsuleGroup(parent: THREE.Group, r: number, h: number, mat: THREE.Material, x: number, y: number, z: number) {
+function capsuleGroup(
+  parent: THREE.Group,
+  r: number,
+  h: number,
+  mat: THREE.Material,
+  x: number,
+  y: number,
+  z: number
+) {
   part(parent, CYL(r, r, h, 12), mat, x, y, z);
   part(parent, new THREE.SphereGeometry(r, 12, 8), mat, x, y + h / 2, z);
   part(parent, new THREE.SphereGeometry(r, 12, 8), mat, x, y - h / 2, z);
@@ -101,7 +116,12 @@ export function buildSoldierModel(): SoldierRig {
     boot: new THREE.MeshStandardMaterial({ color: 0x26262a, roughness: 0.94, metalness: 0.04 }),
     gun: new THREE.MeshStandardMaterial({ color: 0x44484c, roughness: 0.48, metalness: 0.16 }),
     glass: new THREE.MeshStandardMaterial({ color: 0x2a3542, roughness: 0.14, metalness: 0.24 }),
-    accent: new THREE.MeshStandardMaterial({ color: 0xff3b2a, emissive: 0xff2a18, emissiveIntensity: 1.6, roughness: 0.5 }),
+    accent: new THREE.MeshStandardMaterial({
+      color: 0xff3b2a,
+      emissive: 0xff2a18,
+      emissiveIntensity: 1.6,
+      roughness: 0.5,
+    }),
   };
   const INVIS = new THREE.MeshBasicMaterial({ visible: false });
 
@@ -150,7 +170,14 @@ export function buildSoldierModel(): SoldierRig {
   head.position.set(0, 1.655, 0);
   body.add(head);
   part(head, new THREE.SphereGeometry(0.135, 14, 12), MAT.skin, 0, 0, 0);
-  part(head, new THREE.SphereGeometry(0.158, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.64), MAT.helm, 0, 0.012, 0);
+  part(
+    head,
+    new THREE.SphereGeometry(0.158, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.64),
+    MAT.helm,
+    0,
+    0.012,
+    0
+  );
   part(head, B(0.3, 0.035, 0.3), MAT.helm, 0, -0.048, 0.004);
   part(head, B(0.055, 0.1, 0.05), MAT.vest, 0.145, -0.035, 0.01);
   part(head, B(0.055, 0.1, 0.05), MAT.vest, -0.145, -0.035, 0.01);

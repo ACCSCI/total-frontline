@@ -1,9 +1,17 @@
 import * as THREE from 'three';
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
-import missionsData from '../../shared/missions.json';
 import audioData from '../../shared/audio-params.json';
+import missionsData from '../../shared/missions.json';
 import { buildHorizonBackdrop } from './backdrop';
-import { hash2, noise2, snapObjectToTerrain, terrainHeight, windAt } from './terrain';
+import { makeRainTexture } from './rain-texture';
+import {
+  hash2,
+  makeTerrainMaterial,
+  paintGround,
+  snapObjectToTerrain,
+  terrainHeight,
+  windAt,
+} from './terrain';
 
 /* ---------------------------------------------------------------------------
    P0 graybox map: a brand-new linear forest valley, not a reuse of any
@@ -45,41 +53,25 @@ export interface P0Level {
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
 }
 
-function makeTerrainMaterial(colorA: THREE.ColorRepresentation, colorB: THREE.ColorRepresentation) {
-  return new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.96,
-    metalness: 0.0,
-    side: THREE.FrontSide,
-  });
-}
-
-function paintGround(geometry: THREE.BufferGeometry) {
-  const pos = geometry.attributes.position as THREE.BufferAttribute;
-  const colors = new Float32Array(pos.count * 3);
-  const cA = new THREE.Color(0x30352f);
-  const cB = new THREE.Color(0x4a493c);
-  const cMud = new THREE.Color(0x514536);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    const n = noise2(x * 0.09, z * 0.11);
-    const c = cA.clone().lerp(cB, THREE.MathUtils.clamp(n, 0, 1));
-    if (Math.abs(x) < 4) c.lerp(cMud, 0.55);
-    colors[i * 3] = c.r;
-    colors[i * 3 + 1] = c.g;
-    colors[i * 3 + 2] = c.b;
-  }
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-}
-
 export function buildSupplyCrate(): THREE.Group {
   const crate = new THREE.Group();
   crate.name = 'P0_SUPPLY_CRATE';
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3e4a36, roughness: 0.8, metalness: 0.15 });
-  const trimMat = new THREE.MeshStandardMaterial({ color: 0x24251f, roughness: 0.7, metalness: 0.3 });
-  const strapMat = new THREE.MeshStandardMaterial({ color: 0x1b1c17, roughness: 0.6, metalness: 0.2 });
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x3e4a36,
+    roughness: 0.8,
+    metalness: 0.15,
+  });
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: 0x24251f,
+    roughness: 0.7,
+    metalness: 0.3,
+  });
+  const strapMat = new THREE.MeshStandardMaterial({
+    color: 0x1b1c17,
+    roughness: 0.6,
+    metalness: 0.2,
+  });
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.72, 0.62), bodyMat);
   body.position.y = 0.36;
@@ -107,48 +99,6 @@ export function buildSupplyCrate(): THREE.Group {
   }
 
   return crate;
-}
-
-/* ---------------------------------------------------------------------------
-   Procedural raindrop streak sprites. Each sprite is a soft, motion-blurred
-   tail with a bright head. We bake five wind slants so the whole rain layer
-   can switch slant as gusts change direction.
-   ------------------------------------------------------------------------- */
-function makeRainTexture(slant: number): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 128;
-  const g = canvas.getContext('2d') as CanvasRenderingContext2D;
-  g.clearRect(0, 0, 64, 128);
-  const headX = 32 + slant * 7;
-  const tailX = 32 - slant * 11;
-  const headY = 18;
-  const tailY = 116;
-  const strokes = [
-    { w: 6.5, a: 0.22, color: '180,208,234' },
-    { w: 4.0, a: 0.42, color: '205,226,244' },
-    { w: 2.0, a: 0.62, color: '235,244,252' },
-  ];
-  g.lineCap = 'round';
-  for (const s of strokes) {
-    const grad = g.createLinearGradient(headX, headY, tailX, tailY);
-    grad.addColorStop(0, `rgba(${s.color},${s.a})`);
-    grad.addColorStop(0.65, `rgba(${s.color},${s.a * 0.55})`);
-    grad.addColorStop(1, `rgba(${s.color},0)`);
-    g.strokeStyle = grad;
-    g.lineWidth = s.w;
-    g.beginPath();
-    g.moveTo(headX, headY);
-    g.quadraticCurveTo((headX + tailX) / 2 + slant * 4, (headY + tailY) / 2, tailX, tailY);
-    g.stroke();
-  }
-  g.fillStyle = 'rgba(230,242,250,0.55)';
-  g.beginPath();
-  g.ellipse(headX, headY, 1.5, 3.2, slant * 0.5, 0, Math.PI * 2);
-  g.fill();
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
 }
 
 /* ---------------------------------------------------------------------------
@@ -228,7 +178,9 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     guard++;
     const side = hash2(guard * 1.3, 7.1) > 0.5 ? 1 : -1;
     const flank = guard < 390;
-    const x = flank ? side * (9.5 + hash2(guard * 1.7, 0.31) * 24) : (hash2(guard * 1.7, 0.31) * 2 - 1) * 78;
+    const x = flank
+      ? side * (9.5 + hash2(guard * 1.7, 0.31) * 24)
+      : (hash2(guard * 1.7, 0.31) * 2 - 1) * 78;
     const zr = hash2(guard * 3.3, 0.77) * 2 - 1;
     const z = guard < 300 ? zr * (PATH_LENGTH / 2 + 10) : zr * (GROUND_SPAN / 2 - 140);
     if (Math.abs(x) < 6.5 && z > BRIDGE_Z - 12 && z < SPAWN_Z + 8) continue;
@@ -339,11 +291,19 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     const rockPoints: Array<[number, number]> = [[x, z]];
     for (const rr of [0.35, 0.65, 0.95]) {
       for (let a = 0; a < 8; a++) {
-        rockPoints.push([x + Math.cos((a / 8) * Math.PI * 2) * r * rr, z + Math.sin((a / 8) * Math.PI * 2) * r * rr]);
+        rockPoints.push([
+          x + Math.cos((a / 8) * Math.PI * 2) * r * rr,
+          z + Math.sin((a / 8) * Math.PI * 2) * r * rr,
+        ]);
       }
     }
     const snap = () =>
-      snapObjectToTerrain(rock, x, z, { points: rockPoints, sink: 0.05, groundAt: rayGroundHeight, mode: 'center' });
+      snapObjectToTerrain(rock, x, z, {
+        points: rockPoints,
+        sink: 0.05,
+        groundAt: rayGroundHeight,
+        mode: 'center',
+      });
     snap();
     propSnaps.push(snap);
     obstacles.push({ x, z, r: r * 0.85 });
@@ -367,7 +327,12 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     const logPoints: Array<[number, number]> = [];
     for (let t = -1.7; t <= 1.7; t += 0.2) logPoints.push([x + dx * t, z + dz * t]);
     const snap = () =>
-      snapObjectToTerrain(log, x, z, { points: logPoints, sink: 0.05, groundAt: rayGroundHeight, mode: 'center' });
+      snapObjectToTerrain(log, x, z, {
+        points: logPoints,
+        sink: 0.05,
+        groundAt: rayGroundHeight,
+        mode: 'center',
+      });
     snap();
     propSnaps.push(snap);
     for (let t = -1.6; t <= 1.6; t += 0.8) {
@@ -383,14 +348,20 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
 
   /* --- bridge at the exit --- */
   const bridgeY = terrainHeight(0, BRIDGE_Z);
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(14, 0.5, 16), new THREE.MeshStandardMaterial({ color: 0x3b3a38, roughness: 0.85 }));
+  const deck = new THREE.Mesh(
+    new THREE.BoxGeometry(14, 0.5, 16),
+    new THREE.MeshStandardMaterial({ color: 0x3b3a38, roughness: 0.85 })
+  );
   deck.position.set(0, bridgeY + 0.35, BRIDGE_Z);
   deck.castShadow = true;
   deck.receiveShadow = true;
   deck.userData.debugKind = 'decor';
   group.add(deck);
   for (const sx of [-6.6, -4.4, 4.4, 6.6]) {
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 3.4, 7), new THREE.MeshStandardMaterial({ color: 0x292927, roughness: 0.9 }));
+    const pillar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.28, 0.34, 3.4, 7),
+      new THREE.MeshStandardMaterial({ color: 0x292927, roughness: 0.9 })
+    );
     pillar.position.set(sx, bridgeY - 1.3, BRIDGE_Z);
     pillar.castShadow = true;
     pillar.userData.debugKind = 'decor';
@@ -440,7 +411,12 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     const puddle = new THREE.Group();
     const stain = new THREE.Mesh(
       new THREE.CircleGeometry(r * 1.45, 22),
-      new THREE.MeshBasicMaterial({ color: 0x080f16, transparent: true, opacity: 0.4, depthWrite: false })
+      new THREE.MeshBasicMaterial({
+        color: 0x080f16,
+        transparent: true,
+        opacity: 0.4,
+        depthWrite: false,
+      })
     );
     stain.rotation.x = -Math.PI / 2;
     stain.position.y = 0.025;
@@ -448,7 +424,13 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     puddle.add(stain);
     const water = new THREE.Mesh(
       new THREE.CircleGeometry(r, 22),
-      new THREE.MeshStandardMaterial({ color: 0x16232e, roughness: 0.08, metalness: 0.55, transparent: true, opacity: 0.92 })
+      new THREE.MeshStandardMaterial({
+        color: 0x16232e,
+        roughness: 0.08,
+        metalness: 0.55,
+        transparent: true,
+        opacity: 0.92,
+      })
     );
     water.rotation.x = -Math.PI / 2;
     water.position.y = 0.04;
@@ -459,7 +441,13 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     for (let k = 0; k < 2; k++) {
       const ripple = new THREE.Mesh(
         new THREE.RingGeometry(0.82, 1, 26),
-        new THREE.MeshBasicMaterial({ color: 0xbdd4e4, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false })
+        new THREE.MeshBasicMaterial({
+          color: 0xbdd4e4,
+          transparent: true,
+          opacity: 0,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        })
       );
       ripple.rotation.x = -Math.PI / 2;
       ripple.position.y = 0.055 + k * 0.004;
@@ -484,7 +472,9 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     const spawn = (i: number, cam: THREE.Vector3, anywhere: boolean) => {
       const x = cam.x + (Math.random() * 2 - 1) * def.spread;
       const z = cam.z + (Math.random() * 2 - 1) * def.spread * 1.25;
-      const y = anywhere ? Math.random() * 22 : Math.max(1.2, terrainHeight(x, z) + 8 + Math.random() * 9);
+      const y = anywhere
+        ? Math.random() * 22
+        : Math.max(1.2, terrainHeight(x, z) + 8 + Math.random() * 9);
       pos[i * 3] = x;
       pos[i * 3 + 1] = y;
       pos[i * 3 + 2] = z;

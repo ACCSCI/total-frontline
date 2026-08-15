@@ -1,18 +1,18 @@
 import * as THREE from 'three';
-import { createRenderer, type GameRenderer } from './renderer';
-import { buildP0Level, buildSupplyCrate, type P0Level } from './level';
-import { snapObjectToTerrain, windAt } from './terrain';
-import { ScreenRain } from './screen-rain';
-import { FirstPersonPlayer } from './player';
-import { makeIntroCutscene, makeOutroCutscene, Sequencer } from './sequencer';
-import { SFX } from './sfx';
-import { PropDebugger } from './debug-mode';
-import { predictGroundDelta } from './ground-model';
+import missionsData from '../../shared/missions.json';
 import { CampaignRules } from './campaign';
 import { P0Combat } from './combat';
-import { ViewmodelRig } from './viewmodel';
 import { Crosshair } from './crosshair';
-import missionsData from '../../shared/missions.json';
+import { PropDebugger } from './debug-mode';
+import { predictGroundDelta } from './ground-model';
+import { buildP0Level, buildSupplyCrate, type P0Level } from './level';
+import { FirstPersonPlayer } from './player';
+import { createRenderer, type GameRenderer } from './renderer';
+import { ScreenRain } from './screen-rain';
+import { makeIntroCutscene, makeOutroCutscene, Sequencer } from './sequencer';
+import { SFX } from './sfx';
+import { snapObjectToTerrain, windAt } from './terrain';
+import { ViewmodelRig } from './viewmodel';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const loading = document.getElementById('loading') as HTMLDivElement;
@@ -145,7 +145,13 @@ function startIntroFlight() {
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-function gridFootprint(cx: number, cz: number, hw: number, hd: number, steps = 5): Array<[number, number]> {
+function gridFootprint(
+  cx: number,
+  cz: number,
+  hw: number,
+  hd: number,
+  steps = 5
+): Array<[number, number]> {
   const out: Array<[number, number]> = [];
   for (let ix = 0; ix < steps; ix++) {
     for (let iz = 0; iz < steps; iz++) {
@@ -270,12 +276,25 @@ async function boot() {
     viewmodel = new ViewmodelRig(campaign);
     crosshair = new Crosshair(crossCanvas);
     crosshair.setHidden(true);
-    (window as unknown as { __P0_DEBUG?: unknown }).__P0_DEBUG = { level, scene, player, snapObjectToTerrain, THREE, debug, predictGroundDelta, campaign, combat, viewmodel, crosshair };
+    (window as unknown as { __P0_DEBUG?: unknown }).__P0_DEBUG = {
+      level,
+      scene,
+      player,
+      snapObjectToTerrain,
+      THREE,
+      debug,
+      predictGroundDelta,
+      campaign,
+      combat,
+      viewmodel,
+      crosshair,
+    };
 
     for (const obj of level.objectives) {
       const el = document.createElement('div');
       el.className = 'objectiveBeacon';
-      el.innerHTML = '<div class="beaconStem"></div><div class="beaconMark"></div><div class="beaconLabel"></div>';
+      el.innerHTML =
+        '<div class="beaconStem"></div><div class="beaconMark"></div><div class="beaconLabel"></div>';
       (el.querySelector('.beaconLabel') as HTMLDivElement).textContent = obj.label;
       beaconLayer.appendChild(el);
       beacons.set(obj.id, { el, label: obj.label, z: obj.z });
@@ -352,7 +371,8 @@ async function boot() {
       crosshair?.setHidden(!pointerLocked || !controlsEnabled || !!debug?.active || scoped);
       renderer.render(scene, player.camera);
       if (viewmodel) {
-        viewmodel.root.visible = controlsEnabled && !completed && !cutscene && introState === 'done' && !scoped;
+        viewmodel.root.visible =
+          controlsEnabled && !completed && !cutscene && introState === 'done' && !scoped;
         if (viewmodel.root.visible) viewmodel.update(dt, player);
         if (viewmodel.root.visible) {
           renderer.instance.autoClear = false;
@@ -422,11 +442,15 @@ document.addEventListener('mouseup', (event) => {
   if (event.button === 0) firing = false;
 });
 
-addEventListener('wheel', (event) => {
-  if (!debug?.active || !debug.selected) return;
-  event.preventDefault();
-  debug.nudge(event.deltaY > 0 ? -0.05 : 0.05);
-}, { passive: false });
+addEventListener(
+  'wheel',
+  (event) => {
+    if (!debug?.active || !debug.selected) return;
+    event.preventDefault();
+    debug.nudge(event.deltaY > 0 ? -0.05 : 0.05);
+  },
+  { passive: false }
+);
 
 addEventListener('contextmenu', (event) => {
   if (debug?.active) {
@@ -441,7 +465,13 @@ addEventListener('keydown', (event) => {
   SFX.init();
   keys.add(event.code);
   if (event.code === 'Space') player.input.jump = true;
-  if (event.code === 'KeyZ' && introState === 'done' && controlsEnabled && !cutscene && !event.repeat) {
+  if (
+    event.code === 'KeyZ' &&
+    introState === 'done' &&
+    controlsEnabled &&
+    !cutscene &&
+    !event.repeat
+  ) {
     player.proneRequested = true;
   }
   if (event.code === 'F2' && introState === 'done') {
@@ -465,15 +495,30 @@ addEventListener('keydown', (event) => {
       const count = level.resnapProps();
       const fixed = debug.autoFix();
       const assetStatus = document.getElementById('assetStatus');
-      if (assetStatus) assetStatus.textContent = `一键贴地完成 · 重采样 ${count} 组 · 自动修正 ${fixed} 处`;
+      if (assetStatus)
+        assetStatus.textContent = `一键贴地完成 · 重采样 ${count} 组 · 自动修正 ${fixed} 处`;
     } else if (!event.repeat && controlsEnabled && !cutscene && combat) {
       combat.throwGrenade('lethal', player.camera);
     }
   }
-  if (event.code === 'KeyQ' && introState === 'done' && !event.repeat && controlsEnabled && !cutscene && !debug?.active) {
+  if (
+    event.code === 'KeyQ' &&
+    introState === 'done' &&
+    !event.repeat &&
+    controlsEnabled &&
+    !cutscene &&
+    !debug?.active
+  ) {
     combat?.throwGrenade('tactical', player.camera);
   }
-  if (event.code === 'KeyF' && introState === 'done' && !event.repeat && controlsEnabled && !cutscene && !debug?.active) {
+  if (
+    event.code === 'KeyF' &&
+    introState === 'done' &&
+    !event.repeat &&
+    controlsEnabled &&
+    !cutscene &&
+    !debug?.active
+  ) {
     combat?.tryInteractWeapon(player.position);
   }
   if (event.code === 'KeyR' && introState === 'done' && !event.repeat && controlsEnabled) {

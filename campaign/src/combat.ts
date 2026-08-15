@@ -1,17 +1,28 @@
 import * as THREE from 'three';
-import type { P0Level } from './level';
-import type { FirstPersonPlayer } from './player';
-import { buildSoldierModel, cloneSoldierRig, type SoldierRig } from './soldier';
-import { SFX } from './sfx';
 import loadoutData from '../../shared/loadout.json';
 import missionsData from '../../shared/missions.json';
-import { PRIMARY_WEAPONS, type CampaignRules, type Enemy, type Pickup, type ThrowableProjectile } from './campaign';
+import {
+  type CampaignRules,
+  type Enemy,
+  type Pickup,
+  PRIMARY_WEAPONS,
+  type ThrowableProjectile,
+} from './campaign';
+import type { P0Level } from './level';
+import type { FirstPersonPlayer } from './player';
+import { SFX } from './sfx';
+import { buildSoldierModel, cloneSoldierRig, type SoldierRig } from './soldier';
 
 function makePickupRoot(color: number, label: string): THREE.Group {
   const root = new THREE.Group();
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(0.55, 0.18, 0.18),
-    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.65, roughness: 0.5 })
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.65,
+      roughness: 0.5,
+    })
   );
   body.position.y = 0.18;
   body.castShadow = true;
@@ -44,12 +55,10 @@ export class P0Combat {
   private rayDir = new THREE.Vector3();
   private rayRight = new THREE.Vector3();
   private rayUp = new THREE.Vector3();
-  private flashUntil = -1;
   private flashEl = document.getElementById('p0Flash') as HTMLDivElement;
   private damageEl = document.getElementById('p0Damage') as HTMLDivElement;
   private hitEl = document.getElementById('p0Hitmark') as HTMLDivElement;
   private pickupPrompt = document.getElementById('p0PickupPrompt') as HTMLDivElement;
-  private playerFireT = 0;
 
   constructor(scene: THREE.Scene, level: P0Level, rules: CampaignRules, player: FirstPersonPlayer) {
     this.scene = scene;
@@ -71,7 +80,12 @@ export class P0Combat {
     }
   }
 
-  private addPickup(kind: Pickup['kind'], weaponId: string | undefined, pos: THREE.Vector3, labelOverride?: string) {
+  private addPickup(
+    kind: Pickup['kind'],
+    weaponId: string | undefined,
+    pos: THREE.Vector3,
+    labelOverride?: string
+  ) {
     const def = weaponId ? PRIMARY_WEAPONS[weaponId] : null;
     const label = labelOverride || (def ? `${def.name} — F 替换` : '弹药补给');
     const color = kind === 'ammo' ? 0x7f9a6a : 0xc88a3a;
@@ -79,14 +93,25 @@ export class P0Combat {
     root.position.set(pos.x, this.level.groundY(pos.x, pos.z) + 0.02, pos.z);
     root.userData.debugKind = 'pickup';
     this.scene.add(root);
-    this.pickups.push({ root, kind, weaponId, label, coolUntil: -1, bobT: Math.random() * Math.PI * 2 });
+    this.pickups.push({
+      root,
+      kind,
+      weaponId,
+      label,
+      coolUntil: -1,
+      bobT: Math.random() * Math.PI * 2,
+    });
   }
 
   private spawnEnemies() {
-    const positions = missionsData.mission01.enemyPositions.map((p) => new THREE.Vector3(p.x, 0, p.z));
+    const positions = missionsData.mission01.enemyPositions.map(
+      (p) => new THREE.Vector3(p.x, 0, p.z)
+    );
     for (const pos of positions) {
       const root = new THREE.Group();
-      const soldier = this.spawnTemplate ? cloneSoldierRig(this.spawnTemplate) : buildSoldierModel();
+      const soldier = this.spawnTemplate
+        ? cloneSoldierRig(this.spawnTemplate)
+        : buildSoldierModel();
       this.spawnTemplate ||= soldier;
       root.add(soldier.model);
       root.position.set(pos.x, this.level.groundY(pos.x, pos.z) + 0.02, pos.z);
@@ -116,7 +141,9 @@ export class P0Combat {
     for (const p of wave.positions) {
       const pos = new THREE.Vector3(p.x, 0, p.z);
       const root = new THREE.Group();
-      const soldier = this.spawnTemplate ? cloneSoldierRig(this.spawnTemplate) : buildSoldierModel();
+      const soldier = this.spawnTemplate
+        ? cloneSoldierRig(this.spawnTemplate)
+        : buildSoldierModel();
       this.spawnTemplate ||= soldier;
       root.add(soldier.model);
       root.position.set(pos.x, this.level.groundY(pos.x, pos.z) + 0.02, pos.z);
@@ -158,7 +185,7 @@ export class P0Combat {
 
   tryInteractWeapon(pos: THREE.Vector3) {
     const p = this.nearestWeaponPickup(pos);
-    if (!p || !p.weaponId) return false;
+    if (!p?.weaponId) return false;
     const old = this.rules.pickupWeapon(p.weaponId);
     if (old) {
       p.weaponId = old.id;
@@ -201,7 +228,7 @@ export class P0Combat {
         node = node.parent;
       }
       const enemy = node ? this.enemies.find((e) => e.root === node) : null;
-      if (!enemy || !enemy.alive) continue;
+      if (!enemy?.alive) continue;
       if (this.losBlocked(camera.position, enemy.root.position)) continue;
       enemy.health -= def.baseDamage * (headshot ? 2 : 1);
       enemy.hitFlash = 0.12;
@@ -222,11 +249,7 @@ export class P0Combat {
     const lenSq = dx * dx + dz * dz;
     if (lenSq < 1e-6) return false;
     for (const o of this.level.obstacles) {
-      const t = THREE.MathUtils.clamp(
-        ((o.x - a.x) * dx + (o.z - a.z) * dz) / lenSq,
-        0,
-        1
-      );
+      const t = THREE.MathUtils.clamp(((o.x - a.x) * dx + (o.z - a.z) * dz) / lenSq, 0, 1);
       const cx = a.x + dx * t - o.x;
       const cz = a.z + dz * t - o.z;
       const r = o.r * 0.85;
@@ -249,7 +272,12 @@ export class P0Combat {
     if (Math.random() < loadoutData.campaign.enemyDrop.weaponChance) {
       const pool = loadoutData.campaign.enemyDrop.weaponPool;
       const id = pool[Math.floor(Math.random() * pool.length)];
-      this.addPickup('lootWeapon', id, new THREE.Vector3(x + 0.8, 0, z), `${PRIMARY_WEAPONS[id].name} — F 拾取`);
+      this.addPickup(
+        'lootWeapon',
+        id,
+        new THREE.Vector3(x + 0.8, 0, z),
+        `${PRIMARY_WEAPONS[id].name} — F 拾取`
+      );
     }
     void y;
     SFX.enemyDown();
@@ -259,10 +287,17 @@ export class P0Combat {
     if (!this.rules.useThrowable(kind)) return false;
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
-    const origin = camera.position.clone().add(dir.clone().multiplyScalar(0.7)).add(new THREE.Vector3(0, -0.2, 0));
+    const origin = camera.position
+      .clone()
+      .add(dir.clone().multiplyScalar(0.7))
+      .add(new THREE.Vector3(0, -0.2, 0));
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.08, 10, 8),
-      new THREE.MeshStandardMaterial({ color: kind === 'lethal' ? 0x2b3320 : 0xb9c6d0, emissive: kind === 'lethal' ? 0x5a1f10 : 0x8096a4, emissiveIntensity: 0.8 })
+      new THREE.MeshStandardMaterial({
+        color: kind === 'lethal' ? 0x2b3320 : 0xb9c6d0,
+        emissive: kind === 'lethal' ? 0x5a1f10 : 0x8096a4,
+        emissiveIntensity: 0.8,
+      })
     );
     mesh.position.copy(origin);
     mesh.userData.debugKind = 'throwable';
@@ -283,7 +318,12 @@ export class P0Combat {
       setTimeout(() => this.scene.remove(flash), 240);
       const boom = new THREE.Mesh(
         new THREE.SphereGeometry(0.35, 14, 10),
-        new THREE.MeshBasicMaterial({ color: 0xff9a3a, transparent: true, opacity: 0.85, depthWrite: false })
+        new THREE.MeshBasicMaterial({
+          color: 0xff9a3a,
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false,
+        })
       );
       boom.position.copy(pos);
       boom.userData.debugKind = 'fx';
@@ -317,7 +357,8 @@ export class P0Combat {
     for (const p of this.pickups) {
       if (!p.root.visible) continue;
       p.bobT += dt * 2.2;
-      p.root.position.y = this.level.groundY(p.root.position.x, p.root.position.z) + 0.04 + Math.sin(p.bobT) * 0.07;
+      p.root.position.y =
+        this.level.groundY(p.root.position.x, p.root.position.z) + 0.04 + Math.sin(p.bobT) * 0.07;
       p.root.rotation.y += dt * 0.8;
       const d = Math.hypot(p.root.position.x - playerPos.x, p.root.position.z - playerPos.z);
       if (p.kind === 'ammo' && d < 2.2 && p.coolUntil <= now) {
@@ -347,7 +388,10 @@ export class P0Combat {
       t.life -= dt;
       t.velocity.y -= 12 * dt;
       t.mesh.position.addScaledVector(t.velocity, dt);
-      if (t.life <= 0 || t.mesh.position.y <= this.level.groundY(t.mesh.position.x, t.mesh.position.z) + 0.06) {
+      if (
+        t.life <= 0 ||
+        t.mesh.position.y <= this.level.groundY(t.mesh.position.x, t.mesh.position.z) + 0.06
+      ) {
         this.throwables.splice(i, 1);
         this.detonate(t);
       }
@@ -359,7 +403,8 @@ export class P0Combat {
           e.deathT -= dt;
           const k = 1 - Math.max(0, e.deathT / 0.75);
           e.root.rotation.x = Math.min(1.35, k * 1.55);
-          e.root.position.y = this.level.groundY(e.root.position.x, e.root.position.z) + 0.02 - k * 0.18;
+          e.root.position.y =
+            this.level.groundY(e.root.position.x, e.root.position.z) + 0.02 - k * 0.18;
           if (e.deathT <= 0) e.root.visible = false;
         }
         continue;
@@ -425,8 +470,16 @@ export class P0Combat {
     e.root.position.x += mx * dt;
     e.root.position.z += mz * dt;
     this.avoidObstacles(e.root.position);
-    e.root.position.x = THREE.MathUtils.clamp(e.root.position.x, this.level.bounds.minX + 0.7, this.level.bounds.maxX - 0.7);
-    e.root.position.z = THREE.MathUtils.clamp(e.root.position.z, this.level.bounds.minZ + 0.7, this.level.bounds.maxZ - 0.7);
+    e.root.position.x = THREE.MathUtils.clamp(
+      e.root.position.x,
+      this.level.bounds.minX + 0.7,
+      this.level.bounds.maxX - 0.7
+    );
+    e.root.position.z = THREE.MathUtils.clamp(
+      e.root.position.z,
+      this.level.bounds.minZ + 0.7,
+      this.level.bounds.maxZ - 0.7
+    );
     e.root.position.y = this.level.groundY(e.root.position.x, e.root.position.z) + 0.02;
 
     const moving = Math.hypot(mx, mz) > 0.05;
