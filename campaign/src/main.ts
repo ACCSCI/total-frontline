@@ -17,6 +17,7 @@ import { ViewmodelRig } from './viewmodel';
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const loading = document.getElementById('loading') as HTMLDivElement;
 const loadingText = document.getElementById('loadingText') as HTMLDivElement;
+const loadingSub = document.getElementById('loadingSub') as HTMLDivElement;
 const hud = document.getElementById('hud') as HTMLDivElement;
 const hint = document.getElementById('hint') as HTMLDivElement;
 const cutsceneBars = document.getElementById('cutsceneBars') as HTMLDivElement;
@@ -55,11 +56,9 @@ const _beaconCam = new THREE.Vector3();
 const keys = new Set<string>();
 const objectiveState = new Map<string, boolean>();
 let currentObjectiveIndex = 0;
-const clock = new THREE.Clock();
+let lastFrameMs = performance.now();
 
-function setLoading(text: string) {
-  loadingText.textContent = text;
-}
+const setLoading = (text: string) => (loadingText.textContent = text);
 
 function updateObjective() {
   const active = level.objectives.find((obj) => !objectiveState.get(obj.id));
@@ -144,6 +143,7 @@ function startIntroFlight() {
 }
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 function gridFootprint(
   cx: number,
@@ -228,6 +228,7 @@ function handleKeys() {
 
 async function boot() {
   try {
+    loadingSub.textContent = '战役「鹰落」 · 9 步目标 · 30 名敌军 · 即时演算 CG';
     setLoading('正在启动 WebGPU 渲染器…');
     renderer = await createRenderer(canvas);
     screenRain = new ScreenRain(document.getElementById('screenRain') as HTMLCanvasElement);
@@ -235,6 +236,7 @@ async function boot() {
     setLoading('正在生成全新灰盒线性地图：黑森林河谷…');
     level = buildP0Level(scene);
     player = new FirstPersonPlayer(level);
+    await nextFrame();
 
     setLoading('正在生成关卡道具（纯程序化几何）…');
     const crate = buildSupplyCrate();
@@ -268,14 +270,17 @@ async function boot() {
     cloneSnap();
     level.registerPropSnap(cloneSnap);
     for (const dx of [-0.32, 0, 0.32]) level.addObstacle(-4.5 + dx, -62, 0.26);
+    await nextFrame();
 
     /* Build the debugger AFTER the crates exist so raycast selection can see them. */
+    setLoading('正在装配战役规则与战术系统…');
     debug = new PropDebugger(level, scene, player.camera);
     campaign = new CampaignRules();
     combat = new P0Combat(scene, level, campaign, player);
     viewmodel = new ViewmodelRig(campaign);
     crosshair = new Crosshair(crossCanvas);
     crosshair.setHidden(true);
+    await nextFrame();
     (window as unknown as { __P0_DEBUG?: unknown }).__P0_DEBUG = {
       level,
       scene,
@@ -303,14 +308,23 @@ async function boot() {
     const assetStatus = document.getElementById('assetStatus');
     if (assetStatus) assetStatus.textContent = '资产流：纯程序化几何 · 音频：程序化雨/风/雷/脚步';
 
+    setLoading('初始化完成，准备进入任务简报');
+    loadingSub.textContent = '单击进入任务简报 · ESC 可跳过开场';
+    await nextFrame();
+
     loading.hidden = true;
     hud.hidden = true;
     introOverlay.hidden = false;
     introState = 'waiting';
     introOverlay.classList.remove('typing', 'fading', 'flying');
 
+    /* Soldier construction is the heaviest remaining work; let the loading
+       screen disappear first, then deploy before the player reaches controls. */
+    setTimeout(() => combat?.ensureEnemiesSpawned(), 0);
+
     renderer.setAnimationLoop((timeMs) => {
-      const dt = Math.min(clock.getDelta(), 0.05);
+      const dt = Math.min(Math.max((timeMs - lastFrameMs) / 1000, 0), 0.05);
+      lastFrameMs = timeMs;
       const time = timeMs / 1000;
 
       if (cutscene) {

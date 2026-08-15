@@ -32,7 +32,6 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<GameRen
       const renderer = new WebGPURenderer({
         canvas,
         antialias: true,
-        powerPreference: 'high-performance',
       });
       await Promise.race([renderer.init(), timeout(7000)]);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));

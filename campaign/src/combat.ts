@@ -51,6 +51,7 @@ export class P0Combat {
   kills = 0;
   private triggeredWaves = new Set<string>();
   private spawnTemplate: SoldierRig | null = null;
+  private enemiesSpawned = false;
   private raycaster = new THREE.Raycaster();
   private rayDir = new THREE.Vector3();
   private rayRight = new THREE.Vector3();
@@ -66,9 +67,16 @@ export class P0Combat {
     this.rules = rules;
     this.player = player;
     this.spawnPickups();
-    this.spawnEnemies();
     rules.updateHud();
     this.updateHealthHud();
+  }
+
+  /** Heavy soldier construction is deferred until after the loading screen is
+      hidden, so the boot paint is never blocked behind 30 rigs. */
+  ensureEnemiesSpawned() {
+    if (this.enemiesSpawned) return;
+    this.enemiesSpawned = true;
+    this.spawnEnemies();
   }
 
   private spawnPickups() {

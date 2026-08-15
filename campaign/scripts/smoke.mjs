@@ -349,6 +349,7 @@ await page.screenshot({ path: `${outDir}/p0-smoke.png` });
 
 const failures = [];
 if (rules.slotCount !== 2) failures.push('campaign must have exactly two weapon slots');
+if (rules.before[1] !== 'ks12') failures.push('campaign must start with two weapons');
 if (!rules.swapped || rules.after[0] !== 'ks12') failures.push('F weapon swap failed');
 if (rules.throwMax !== 3) failures.push('throwable cap is not 3');
 if (rules.throwBefore[0] !== 1 || rules.throwBefore[1] !== 1)

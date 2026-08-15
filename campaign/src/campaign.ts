@@ -117,7 +117,11 @@ export class CampaignRules {
 
   constructor() {
     const m4 = PRIMARY_WEAPONS.m4;
-    this.slots = [{ def: m4, mag: m4.magSize, reserve: m4.reserve }, null];
+    const ks12 = PRIMARY_WEAPONS.ks12;
+    this.slots = [
+      { def: m4, mag: m4.magSize, reserve: m4.reserve },
+      { def: ks12, mag: ks12.magSize, reserve: ks12.reserve },
+    ];
   }
 
   get primary(): CarriedWeapon | null {

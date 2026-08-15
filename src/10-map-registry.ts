@@ -72,7 +72,7 @@ function partitionMapChunks(rec) {
   }
 }
 
-function activateNearbyChunks(x, z, radius = 40) {
+function activateNearbyChunks(x, z, radius = 72) {
   if (!CUR || !CUR.chunks) return;
   const r2 = radius * radius;
   const pix = Math.floor(x / MAP_CHUNK),

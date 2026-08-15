@@ -468,6 +468,7 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   const rainLayers = rainLayerDefs.map((def) => {
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(def.count * 3);
+    const uv = new Float32Array(def.count * 2);
     const speed = new Float32Array(def.count);
     const spawn = (i: number, cam: THREE.Vector3, anywhere: boolean) => {
       const x = cam.x + (Math.random() * 2 - 1) * def.spread;
@@ -478,10 +479,13 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
       pos[i * 3] = x;
       pos[i * 3 + 1] = y;
       pos[i * 3 + 2] = z;
+      uv[i * 2] = (x - cam.x) / def.spread;
+      uv[i * 2 + 1] = (z - cam.z) / def.spread;
       speed[i] = def.minSpeed + Math.random() * (def.maxSpeed - def.minSpeed);
     };
     for (let i = 0; i < def.count; i++) spawn(i, rainCam, true);
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     const mat = new THREE.PointsMaterial({
       map: rainTextures[2],
       size: def.size,
