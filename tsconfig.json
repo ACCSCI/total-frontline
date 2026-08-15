@@ -51,6 +51,7 @@
     "src/20d-main-menu.ts",
     "src/21-ai-a.ts",
     "src/21b-ally-tactics.ts",
+    "src/21c-player-body.ts",
     "src/22-ai-b.ts",
     "src/23-player-update.ts",
     "src/23a-vm-rifle-physics.ts",
@@ -58,6 +59,7 @@
     "src/24-vm-anim.ts",
     "src/25-flow.ts",
     "src/25-killstreak-modes.ts",
+    "src/27-missions.ts",
     "src/26-main.ts"
   ]
 }

@@ -405,6 +405,7 @@ export async function runReloadSmoke(page, check) {
       updateViewmodel(0, 0, 0);
       sprintPoses.push({
         x: vmSway.position.x,
+        y: vmSway.position.y,
         yaw: vmSway.rotation.y,
         roll: vmSway.rotation.z,
         pitch: vmSway.rotation.x,
@@ -488,8 +489,14 @@ export async function runReloadSmoke(page, check) {
       reloadCentred: reloadPoses.every(
         (p) => p.x >= 0.02 && p.x <= 0.13 && Math.abs(p.roll) < 0.11
       ),
-      sprintLeft: sprintPoses.every(
-        (p) => p.x > -0.1 && p.x < -0.035 && p.yaw > 0.35 && p.roll < -0.22 && p.pitch > 0.3
+      sprintTucked: sprintPoses.every(
+        (p) =>
+          p.x < 0 &&
+          p.x > -0.08 &&
+          p.y < -0.4 &&
+          p.yaw > 0.4 &&
+          p.roll < -0.42 &&
+          p.pitch > 0.75
       ),
       switchTime,
       audio:
@@ -579,8 +586,8 @@ export async function runReloadSmoke(page, check) {
     'focus loss clears stuck inputs and pointer-lock mouse warps are clamped'
   );
   check(
-    handling.reloadCentred && handling.sprintLeft,
-    'reloads stay visible while sprint carries every normal weapon low on the left with its muzzle left'
+    handling.reloadCentred && handling.sprintTucked,
+    'reloads stay visible while sprint tucks every normal weapon to the ribs, muzzle up and left'
   );
   check(
     handling.switchTime < 0.7 && handling.audio,

@@ -60,7 +60,7 @@ function selectAllyTarget(a) {
   return best;
 }
 
-function allyMoveSmart(a, goalX, goalZ, dt) {
+function allyMoveSmart(a, goalX, goalZ, dt, lod) {
   const obj = a.obj;
   if (a.detour) {
     if (Math.hypot(a.detour.x - obj.position.x, a.detour.z - obj.position.z) < 0.8) a.detour = null;
@@ -92,37 +92,42 @@ function allyMoveSmart(a, goalX, goalZ, dt) {
   dx /= dl;
   dz /= dl;
 
-  const y0 = obj.position.y + 0.3,
-    y1 = obj.position.y + 1.65;
-  const open = (nx, nz) =>
-    !blocked(obj.position.x + nx * 0.55, obj.position.z + nz * 0.55, y0, y1, 0.45) &&
-    !blocked(obj.position.x + nx * 1.7, obj.position.z + nz * 1.7, y0, y1, 0.48);
-  if (!open(dx, dz)) {
-    const base = Math.atan2(dx, dz),
-      side = a.avoidSide || (a.idx % 2 ? 1 : -1);
-    let found = false;
-    for (const turn of [0.55, 0.95, 1.4, 1.9]) {
-      for (const sign of [side, -side]) {
-        const angle = base + turn * sign,
-          nx = Math.sin(angle),
-          nz = Math.cos(angle);
-        if (!open(nx, nz)) continue;
-        dx = nx;
-        dz = nz;
-        a.avoidSide = sign;
-        found = true;
-        break;
+  if (lod === 1) a.repathT = (a.repathT || 0) - dt;
+  if (lod !== 2 && (lod !== 1 || a.repathT <= 0)) {
+    if (lod === 1) a.repathT = 0.4;
+    const y0 = obj.position.y + 0.3,
+      y1 = obj.position.y + 1.65;
+    const open = (nx, nz) =>
+      !blocked(obj.position.x + nx * 0.55, obj.position.z + nz * 0.55, y0, y1, 0.45) &&
+      !blocked(obj.position.x + nx * 1.7, obj.position.z + nz * 1.7, y0, y1, 0.48);
+    if (!open(dx, dz)) {
+      const base = Math.atan2(dx, dz),
+        side = a.avoidSide || (a.idx % 2 ? 1 : -1);
+      let found = false;
+      for (const turn of [0.55, 0.95, 1.4, 1.9]) {
+        for (const sign of [side, -side]) {
+          const angle = base + turn * sign,
+            nx = Math.sin(angle),
+            nz = Math.cos(angle);
+          if (!open(nx, nz)) continue;
+          dx = nx;
+          dz = nz;
+          a.avoidSide = sign;
+          found = true;
+          break;
+        }
+        if (found) break;
       }
-      if (found) break;
-    }
-    if (!found) {
-      dx = -dx;
-      dz = -dz;
-      a.avoidSide = -side;
-    }
-  } else a.avoidSide = 0;
+      if (!found) {
+        dx = -dx;
+        dz = -dz;
+        a.avoidSide = -side;
+      }
+    } else a.avoidSide = 0;
+  }
 
-  const speed = distance > 17 ? 6.4 : distance > 8 ? 5.7 : a.tgt ? 3.7 : 3.3;
+  let speed = distance > 17 ? 6.4 : distance > 8 ? 5.7 : a.tgt ? 3.7 : 3.3;
+  if (lod === 2) speed *= 0.65;
   moveSlide(obj.position, dx * speed * dt, dz * speed * dt, 0.42, 1.7);
   obj.position.x = clamp(obj.position.x, -HALF + 1, HALF - 1);
   obj.position.z = clamp(obj.position.z, -HALF + 1, HALF - 1);

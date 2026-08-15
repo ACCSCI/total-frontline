@@ -69,6 +69,7 @@ function callGunship() {
   player.vel.set(0, 0, 0);
   setADS(false);
   vmRoot.visible = false;
+  setPlayerBodyVisible(true);
   setGunshipUI(true);
   setGunshipThermal(true);
   compMat.uniforms.gunship.value = 1;
@@ -99,6 +100,7 @@ function endGunship(reason?) {
     respawnPlayer();
     comms(null, '炮艇任务结束 — 已从标准部署点重新投入战斗', true);
   }
+  setPlayerBodyVisible(false);
   restorePlayerViewmodel();
   fovCur = G.jug ? 68 : BASE_FOV;
   camera.fov = fovCur;
@@ -116,7 +118,7 @@ function gunshipGroundPoint(s) {
   _gunshipDir.subVectors(s.aim, camera.position).normalize();
   shootRay.set(camera.position, _gunshipDir);
   shootRay.far = 140;
-  const hit = shootRay.intersectObjects(worldSolid, false)[0];
+  const hit = intersectWorldSolid(shootRay)[0];
   return hit ? _gunshipAim.copy(hit.point) : _gunshipAim.copy(s.aim);
 }
 
@@ -182,7 +184,7 @@ function fireGunship(s) {
       _gunshipDir.divideScalar(coverDist);
       shootRay.set(_gunshipBlastFrom.copy(at).addScaledVector(_up, 0.25), _gunshipDir);
       shootRay.far = coverDist - 0.15;
-      if (shootRay.intersectObjects(worldSolid, false).length) continue;
+      if (intersectWorldSolid(shootRay).length) continue;
     }
     const dmg = weapon.damage * clamp(1 - d / (weapon.radius * 1.25), 0.35, 1);
     _blastDir.set(e.obj.position.x - at.x, 0, e.obj.position.z - at.z).normalize();
@@ -232,7 +234,7 @@ function updateGunshipTargets() {
     _gunshipFrom.divideScalar(distance);
     shootRay.set(camera.position, _gunshipFrom);
     shootRay.far = Math.max(0, distance - 0.35);
-    const occluded = shootRay.intersectObjects(worldSolid, false).length > 0;
+    const occluded = intersectWorldSolid(shootRay).length > 0;
     marker.style.display = 'block';
     marker.style.left = `${x}px`;
     marker.style.top = `${y}px`;
@@ -283,6 +285,7 @@ function updateGunship(dt, mdx?, mdy?) {
   s.aim.x = clamp(s.aim.x, -HALF + 2, HALF - 2);
   s.aim.z = clamp(s.aim.z, -HALF + 2, HALF - 2);
   camera.lookAt(s.aim);
+  syncPlayerBody(dt);
   camera.fov = [28, 38, 50][s.weapon];
   camera.updateProjectionMatrix();
   updateGunshipTargets();

@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer-core'; import { runReloadSmoke } from './smoke-reload.mjs'; import { runStanceSmoke } from './smoke-stance.mjs'; import { runSmgSmoke } from './smoke-smg.mjs'; import { runBallisticsSmoke } from './smoke-ballistics.mjs'; import { runMenuSmoke } from './smoke-menu.mjs';
+import puppeteer from 'puppeteer-core'; import { runReloadSmoke } from './smoke-reload.mjs'; import { runStanceSmoke } from './smoke-stance.mjs'; import { runSmgSmoke } from './smoke-smg.mjs'; import { runBallisticsSmoke } from './smoke-ballistics.mjs'; import { runMenuSmoke } from './smoke-menu.mjs'; import { runMissionSmoke } from './smoke-missions.mjs';
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe',
   URL = process.env.SMOKE_URL || 'http://127.0.0.1:8123/index.html';
 const browser = await puppeteer.launch({
@@ -72,7 +72,8 @@ const nuke = await page.evaluate(() => ({
     [-26, -20],
     [0, 26],
   ].every(([x, z]) => walkable(x, z)),
-  stairRampClear: !blocked(-11.65, -9.35, 0.3, 1.7, 0.42),
+  stairRampClear: !blocked(-11.65, -9.35, 1.85, 3.16, 0.42),
+  stairBackSolid: blocked(-14.4, -9.35, 0.3, 1.7, 0.36),
   sofaMoved: blocked(-17.32, -4.45, 0.3, 1.1, 0.1) && !blocked(-15.8, -8.6, 0.3, 1.1, 0.1),
   busCrossPass:
     [-3.45, -2.8, -2, -1.2, -0.55].every((x) => !blocked(x, -3, 0.3, 1.95, 0.34)) &&
@@ -85,7 +86,7 @@ check(nuke.enemies === 6, 'six hostiles respawned on nuketown');
 check(nuke.spawnWalkable, 'nuke spawn is walkable');
 check(nuke.squadEast, 'all hostiles start outdoors behind the east house');
 check(nuke.connected, 'walkable grid reaches both backyards, both houses, the street');
-check(nuke.stairRampClear, 'west-house stair ramp has no invisible blocking wall');
+check(nuke.stairRampClear && nuke.stairBackSolid, 'west-house stairs climb clear and back face solid');
 check(nuke.sofaMoved, 'west-house sofa is against the rear wall and clear of the stairs');
 check(nuke.busCrossPass, 'centre bus has paired middle doors for a side-to-side crossing');
 check(Math.abs(nuke.ground) < 0.05, 'street ground at y=0');
@@ -100,17 +101,24 @@ check(back.cur === 'yard' && back.spawnWalkable, 'switching back to the yard wor
 await page.evaluate(() => applyMap(MAP_NUKE));
 await page.click('.mapCard[data-map="nuke"]');
 await new Promise((r) => setTimeout(r, 800));
-const game = await page.evaluate(() => ({
-  started: G.started,
-  hud: document.getElementById('hud').classList.contains('on'),
-  menuHidden: document.getElementById('startScreen').classList.contains('hide'),
-  time: G.time,
-  spawn: { x: player.pos.x, z: player.pos.z },
-}));
+const game = await page.evaluate(() => {
+  const p = camera.position.clone(), r = camera.rotation.clone(), aim = (y) => {
+    camera.rotation.set(0, y, 0); camera.updateMatrixWorld(true); return SFX.panAt(8, 0);
+  };
+  camera.position.set(0, 1.6, 0);
+  const spatial = aim(0) > 0.4 && aim(Math.PI) < -0.4;
+  camera.position.copy(p); camera.rotation.copy(r); camera.updateMatrixWorld(true);
+  return {
+    started: G.started, hud: document.getElementById('hud').classList.contains('on'),
+    menuHidden: document.getElementById('startScreen').classList.contains('hide'),
+    time: G.time, spawn: { x: player.pos.x, z: player.pos.z }, spatial,
+  };
+});
 console.log('game:', JSON.stringify(game));
 check(game.started && game.hud && game.menuHidden, 'deploying from the menu starts a round');
 check(game.time > 595 && game.time <= 600, 'deathmatch runs ten minutes');
 check(game.spawn.x === -24 && game.spawn.z === -6, 'player spawns behind the west house');
+check(game.spatial, 'world sounds pan with the camera, not the map east-west axis');
 const muzzleAlignment = await page.evaluate(() => {
   const originalWeapon = player.weapon;
   const originalAds = player.adsEase;
@@ -350,14 +358,15 @@ check(picksAlly, 'hostiles engage squadmates, not just the player');
 const streaks = await page.evaluate(() => {
   const out = {};
   G.streaksReady.length = 0;
+  G.streak = 0;
   const kill = () => {
-    let e = enemies.find((x) => !x.dead);
-    if (!e) {
-      e = enemies[0];
-      respawnEnemy(e);
-    }
+    const e = enemies.find((x) => !x.dead) || (respawnEnemy(enemies[0]), enemies[0]);
     damageEnemy(e, 9999, false, null, e.obj.position);
   };
+  for (let n = 0; n < 12; n++) noteKillstreak();
+  out.hoard = G.streaksReady.map((s) => s.id).join();
+  G.streaksReady.length = 0;
+  updateStreakDock();
   G.streak = 2;
   kill();
   out.earned = G.streaksReady.map((s) => s.id).join();
@@ -385,6 +394,8 @@ const streaks = await page.evaluate(() => {
     document.getElementById('hud').classList.contains('gunship') &&
     !vmRoot.visible &&
     compMat.uniforms.gunship.value === 1;
+  out.operatorBody = !!playerBody?.obj.visible &&
+    Math.hypot(playerBody.obj.position.x - player.pos.x, playerBody.obj.position.z - player.pos.z) < 0.05;
   const markerEnemy = enemies[0];
   if (markerEnemy.dead) respawnEnemy(markerEnemy);
   markerEnemy.obj.position.set(0, 0, 0);
@@ -437,7 +448,7 @@ const streaks = await page.evaluate(() => {
   out.gunshipExit =
     !G.gunship &&
     !document.getElementById('hud').classList.contains('gunship') &&
-    compMat.uniforms.gunship.value === 0;
+    !playerBody?.obj.visible && compMat.uniforms.gunship.value === 0;
   switchWeapon(4);
   out.jugLocked = player.weapon === JUG_WEAPON;
   const jugWeapon = WEAPONS[JUG_WEAPON];
@@ -469,21 +480,20 @@ check(streaks.uav, 'activating the UAV starts the sweep');
 check(streaks.airstrike, '5 kills: airstrike callable');
 check(streaks.emp, '7 kills: EMP paralyses enemy fire');
 check(streaks.heli, '8 kills: attack helo on station');
-check(
-  streaks.gunship && streaks.gunshipHud,
-  '10 kills: player enters the gunship fire-control view'
-);
+check(streaks.gunship && streaks.gunshipHud && streaks.operatorBody, '10 kills: gunship view with the operator body on the ground');
 check(streaks.gunshipControl, 'gunship mouse aim and 1/2/3 weapon selection work');
 check(streaks.gunshipVertical, 'gunship mouse-up input moves the reticle upward');
 check(streaks.gunshipThermal, 'gunship thermal view marks enemies and the friendly operator position');
 check(streaks.gunshipOccluded, 'building-obscured gunship targets receive a red X');
 check(streaks.gunshipFire, 'gunship 105 mm cannon fires and enters cooldown');
+check(streaks.hoard === 'uav,airstrike,emp,heli,gunship,juggernaut', 'hoarding every streak still grants juggernaut');
 check(streaks.jug && streaks.jugLocked, '12 kills: juggernaut equips a locked Gatling loadout');
 check(streaks.jugInfinite, 'Juggernaut Gatling has unlimited ammunition and cannot reload');
 check(streaks.gatlingSpin, 'Juggernaut Gatling barrels spin under fire');
 check(streaks.jugArmor, 'Juggernaut armour absorbs damage before health');
 check(streaks.jugCracks, 'Juggernaut visor cracks and status reflect armour damage');
 check(streaks.gunshipExit, 'entering Juggernaut restores the first-person HUD from gunship mode');
+await runMissionSmoke(page, check);
 await page.screenshot({ path: '_smoke-juggernaut.png' });
 
 await page.evaluate(() => {

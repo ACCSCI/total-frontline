@@ -45,7 +45,7 @@ function hasLOS(e, tp?) {
      he can't shoot you. */
   losRay.set(_ePos, _revDir.copy(_eDir).negate());
   losRay.far = dist - 0.4;
-  const hits = losRay.intersectObjects(worldSolid, false);
+  const hits = intersectWorldSolid(losRay);
   return hits.length === 0;
 }
 
@@ -68,7 +68,7 @@ function muzzleClear(e) {
   _revDir.divideScalar(len);
   losRay.set(_ePos, _revDir);
   losRay.far = len - 0.35;
-  return losRay.intersectObjects(worldSolid, false).length === 0;
+  return intersectWorldSolid(losRay).length === 0;
 }
 
 function enemyShoot(e, atPoint?) {
@@ -104,13 +104,16 @@ function enemyShoot(e, atPoint?) {
     .normalize();
 
   enemyMuzzleFlash(muzzle);
-  const pan = clamp((e.obj.position.x - camera.position.x) / 16, -1, 1);
-  SFX.gunshot(Math.random() < 0.5 ? 'rifle' : 'pistol', pan, dist);
+  SFX.gunshot(
+    Math.random() < 0.5 ? 'rifle' : 'pistol',
+    SFX.panAt(muzzle.x, muzzle.z),
+    muzzle.distanceTo(camera.position)
+  );
 
   /* trace against the world, then test every friendly capsule on the way */
   losRay.set(muzzle, dir);
   losRay.far = 90;
-  const hits = losRay.intersectObjects(worldSolid, false);
+  const hits = intersectWorldSolid(losRay);
   const wallDist = hits.length ? hits[0].distance : 90;
 
   /* ray vs vertical cylinder; nearest body along the ray takes the hit */
@@ -170,7 +173,7 @@ function enemyShoot(e, atPoint?) {
       _revDir.divideScalar(revLen);
       losRay.set(_ePos, _revDir);
       losRay.far = revLen - 0.35;
-      if (losRay.intersectObjects(worldSolid, false).length) clearPath = false;
+      if (intersectWorldSolid(losRay).length) clearPath = false;
     }
   }
 
@@ -185,7 +188,7 @@ function enemyShoot(e, atPoint?) {
     fxImpactWall(hits[0].point, n, hits[0].distance);
     /* near-miss whip crack */
     if (hits[0].point.distanceTo(camera.position) < 4.5 && Math.random() < 0.6) {
-      SFX.impactWall(clamp((hits[0].point.x - camera.position.x) / 6, -1, 1), 2);
+      SFX.impactWall(SFX.panAt(hits[0].point.x, hits[0].point.z), 2);
     }
   }
 }
@@ -345,7 +348,7 @@ function allyLOS(a, tp) {
   _aDir.divideScalar(dist);
   losRay.set(tp, _revDir.copy(_aDir).negate());
   losRay.far = dist - 0.4;
-  return losRay.intersectObjects(worldSolid, false).length === 0;
+  return intersectWorldSolid(losRay).length === 0;
 }
 
 function makeAlly(i) {
@@ -435,13 +438,12 @@ function allyShoot(a, e) {
   _aEnd.set(e.obj.position.x, e.obj.position.y + 1.25, e.obj.position.z);
   const dist = _aMuz.distanceTo(_aEnd);
   enemyMuzzleFlash(_aMuz);
-  const pan = clamp((_aMuz.x - camera.position.x) / 16, -1, 1);
-  SFX.gunshot('rifle', pan, dist);
+  SFX.gunshot('rifle', SFX.panAt(_aMuz.x, _aMuz.z), _aMuz.distanceTo(camera.position));
   /* the world gets first claim on the round: a wall between them eats it */
   _aDir.subVectors(_aEnd, _aMuz).divideScalar(dist);
   losRay.set(_aMuz, _aDir);
   losRay.far = dist + 1;
-  const hits = losRay.intersectObjects(worldSolid, false);
+  const hits = intersectWorldSolid(losRay);
   if (hits.length && hits[0].distance < dist - 0.3) {
     _aEnd.copy(hits[0].point);
   } else {
@@ -463,6 +465,14 @@ const ALLY_FORM = [
   [3.0, 4.2],
   [0, 5.2],
 ];
+const AI_NEAR = 28, AI_MID = 52;
+function aiLodLevel(x, z) {
+  const dx = x - player.pos.x, dz = z - player.pos.z;
+  const d2 = dx * dx + dz * dz;
+  if (d2 < AI_NEAR * AI_NEAR) return 0;
+  if (d2 < AI_MID * AI_MID) return 1;
+  return 2;
+}
 function updateAlly(a, dt) {
   const obj = a.obj,
     p = a.p;
@@ -478,20 +488,22 @@ function updateAlly(a, dt) {
     return;
   }
 
+  const lod = a.tgt && !a.tgt.dead ? 0 : aiLodLevel(obj.position.x, obj.position.z);
+
   /* ---------- target scan: nearest visible hostile ---------- */
   a.scanT -= dt;
   if (a.scanT <= 0) {
-    /* Four-to-five visibility sweeps per second stay well inside the existing
-       human reaction delay while avoiding dozens of static-world rays a frame. */
-    a.scanT = 0.22;
-    const best = selectAllyTarget(a);
-    if (best && best !== a.tgt) {
-      a.reactT = rand(0.35, 0.8); // human reaction delay
-      if (Math.random() < 0.18)
-        comms(a, pick(['发现敌人', '接敌，正在开火', '目标出现，压制他']), false, 'contact');
+    a.scanT = lod ? 0.5 : 0.22;
+    if (lod < 2) {
+      const best = selectAllyTarget(a);
+      if (best && best !== a.tgt) {
+        a.reactT = rand(0.35, 0.8); // human reaction delay
+        if (Math.random() < 0.18)
+          comms(a, pick(['发现敌人', '接敌，正在开火', '目标出现，压制他']), false, 'contact');
+      }
+      if (!best) a.reactT = 0;
+      a.tgt = best;
     }
-    if (!best) a.reactT = 0;
-    a.tgt = best;
   }
 
   const e = a.tgt && !a.tgt.dead ? a.tgt : null;
@@ -499,14 +511,18 @@ function updateAlly(a, dt) {
      takes his own engagement arc around the hostile instead of tailing the
      player through the fight. */
   const goal = allyTacticalGoal(a, e);
-  const sp = allyMoveSmart(a, goal.x, goal.z, dt).speed;
+  const sp = allyMoveSmart(a, goal.x, goal.z, dt, lod).speed;
   a.speed = damp(a.speed, sp, 10, dt);
 
-  const gy = groundAt(obj.position.x, obj.position.z, obj.position.y + 0.75);
-  if (gy !== null) {
-    if (obj.position.y > gy + 0.05) obj.position.y = Math.max(gy, obj.position.y - 12 * dt);
-    else obj.position.y = gy;
-  } else obj.position.y = Math.max(0, obj.position.y - 12 * dt);
+  if (lod === 2) a.gSkip = (a.gSkip || 0) + dt;
+  if (lod < 2 || a.gSkip > 0.4) {
+    if (lod === 2) a.gSkip = 0;
+    const gy = groundAt(obj.position.x, obj.position.z, obj.position.y + 0.75);
+    if (gy !== null) {
+      if (lod === 2 || obj.position.y <= gy + 0.05) obj.position.y = gy;
+      else obj.position.y = Math.max(gy, obj.position.y - 12 * dt);
+    } else obj.position.y = Math.max(0, obj.position.y - 12 * dt);
+  }
 
   /* ---------- engage ---------- */
   if (e) {
@@ -520,7 +536,7 @@ function updateAlly(a, dt) {
     );
     if (a.reactT > 0) {
       a.reactT -= dt;
-    } else if (a.tgtVisible && G.grace <= 0 && G.empT <= 0) {
+    } else if (a.tgtVisible && G.grace <= 0) {
       a.fireT -= dt;
       if (a.fireT <= 0) {
         if (a.burst <= 0) a.burst = randI(2, 4);
@@ -543,6 +559,10 @@ function updateAlly(a, dt) {
   obj.rotation.y = a.yaw;
 
   /* ---------- animation (same rig poses as the hostiles) ---------- */
+  if (lod >= 2) {
+    a.tag.sprite.visible = false;
+    return;
+  }
   const walk = clamp(a.speed / 2.4, 0, 1);
   a.walkPhase += dt * (3.0 + a.speed * 2.2);
   const s1 = Math.sin(a.walkPhase),

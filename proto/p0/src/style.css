@@ -1,0 +1,579 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #05080c;
+  color: #e8edf2;
+  user-select: none;
+}
+
+#scene {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#screenRain {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+#beaconLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.objectiveBeacon {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  will-change: transform, opacity;
+}
+
+.objectiveBeacon .beaconStem {
+  position: absolute;
+  left: -1px;
+  bottom: 0;
+  width: 2px;
+  height: 64px;
+  background: linear-gradient(to top, rgba(255, 183, 77, 0.9), rgba(255, 183, 77, 0));
+}
+
+.objectiveBeacon .beaconMark {
+  position: absolute;
+  left: -9px;
+  bottom: 56px;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 183, 77, 0.95);
+  transform: rotate(45deg);
+  box-shadow: 0 0 12px rgba(255, 170, 50, 0.35);
+}
+
+.objectiveBeacon .beaconLabel {
+  position: absolute;
+  left: 12px;
+  bottom: 62px;
+  width: 180px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #ffd9a0;
+  text-shadow: 0 1px 6px #000, 0 0 14px rgba(0, 0, 0, 0.8);
+}
+
+#topLeft {
+  position: absolute;
+  top: 22px;
+  left: 24px;
+}
+
+#missionTag {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: rgba(255, 183, 77, 0.9);
+  text-shadow: 0 1px 6px #000;
+}
+
+#rendererBadge {
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: rgba(178, 214, 255, 0.85);
+  text-shadow: 0 1px 5px #000;
+}
+
+#objectiveBox {
+  position: absolute;
+  left: 24px;
+  bottom: 28px;
+  min-width: 320px;
+  padding: 12px 16px;
+  background: linear-gradient(90deg, rgba(8, 12, 18, 0.82), rgba(8, 12, 18, 0.25));
+  border-left: 2px solid rgba(255, 183, 77, 0.85);
+}
+
+#objectiveHead {
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: rgba(160, 190, 220, 0.85);
+}
+
+#objectiveText {
+  margin-top: 6px;
+  font-size: 15px;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  text-shadow: 0 1px 8px #000;
+}
+
+#crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+}
+
+#crosshair.on {
+  opacity: 1;
+}
+
+#crosshair .ch {
+  position: absolute;
+  display: block;
+  background: rgba(220, 238, 248, 0.9);
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+}
+
+#crosshair .cht { left: -1px; top: -8px; width: 2px; height: 5px; }
+#crosshair .chb { left: -1px; top: 3px; width: 2px; height: 5px; }
+#crosshair .chl { left: -8px; top: -1px; width: 5px; height: 2px; }
+#crosshair .chr { left: 3px; top: -1px; width: 5px; height: 2px; }
+#crosshair .chDot { left: -1px; top: -1px; width: 2px; height: 2px; border-radius: 50%; }
+
+#hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+#hint.on {
+  opacity: 1;
+}
+
+#hint div {
+  margin: 5px 0;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: rgba(235, 242, 248, 0.82);
+  text-shadow: 0 1px 8px #000;
+}
+
+#assetStatus {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(160, 200, 150, 0.85);
+  text-align: right;
+  text-shadow: 0 1px 5px #000;
+}
+
+#campaignHud {
+  position: absolute;
+  left: 24px;
+  bottom: 96px;
+  pointer-events: none;
+}
+
+#p0Loadout {
+  min-width: 280px;
+  padding: 10px 12px;
+  background: rgba(6, 10, 15, 0.55);
+  border-left: 2px solid rgba(140, 190, 230, 0.55);
+}
+
+.p0Slot {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: rgba(185, 205, 220, 0.72);
+}
+
+.p0Slot b {
+  display: inline-block;
+  width: 18px;
+  color: rgba(220, 235, 248, 0.9);
+}
+
+.p0Slot.active {
+  color: #ffd9a0;
+}
+
+#p0Ammo {
+  margin-top: 4px;
+  font-family: Consolas, monospace;
+  font-size: 18px;
+  color: #e8f0f6;
+}
+
+#p0Throwables {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+}
+
+.p0Throw {
+  padding: 5px 9px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #dceaf5;
+  background: rgba(6, 12, 18, 0.6);
+  border: 1px solid rgba(150, 190, 220, 0.4);
+}
+
+.p0Throw.empty {
+  color: rgba(150, 160, 170, 0.4);
+  border-color: rgba(120, 130, 140, 0.25);
+}
+
+#p0PickupPrompt {
+  position: absolute;
+  left: 50%;
+  bottom: 34%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  color: #ffe2b0;
+  text-shadow: 0 1px 8px #000;
+  background: rgba(5, 9, 14, 0.55);
+  border: 1px solid rgba(255, 183, 77, 0.5);
+  white-space: nowrap;
+}
+
+#p0Flash {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  background: rgba(230, 240, 250, 0.9);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#p0Flash.on {
+  opacity: 1;
+}
+
+#p0Damage {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(120, 0, 0, 0) 42%, rgba(180, 20, 10, 0.42) 100%);
+  opacity: 0;
+}
+
+#p0Damage.on {
+  opacity: 1;
+}
+
+#p0Hitmark {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 5;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+#p0Hitmark.on {
+  opacity: 1;
+}
+
+#p0Hitmark i {
+  position: absolute;
+  display: block;
+  width: 7px;
+  height: 2px;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+}
+
+#p0Hitmark i:nth-child(1) { left: 7px; top: -1px; transform: rotate(45deg); }
+#p0Hitmark i:nth-child(2) { left: -14px; top: -1px; transform: rotate(-45deg); }
+#p0Hitmark i:nth-child(3) { left: 7px; top: -1px; transform: rotate(-45deg); }
+#p0Hitmark i:nth-child(4) { left: -14px; top: -1px; transform: rotate(45deg); }
+
+#cutsceneBars {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+#barTop,
+#barBottom {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 11%;
+  background: #000;
+}
+
+#barTop {
+  top: 0;
+}
+
+#barBottom {
+  bottom: 0;
+}
+
+#cutsceneText {
+  position: absolute;
+  left: 50%;
+  bottom: 16%;
+  transform: translateX(-50%);
+  width: min(760px, 80vw);
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.7;
+  letter-spacing: 0.1em;
+  color: rgba(240, 244, 248, 0.92);
+  text-shadow: 0 2px 12px #000;
+  white-space: pre-line;
+}
+
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: #05080c;
+}
+
+.spinner {
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(255, 183, 77, 0.25);
+  border-top-color: #ffb74d;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#loadingText {
+  font-size: 14px;
+  letter-spacing: 0.14em;
+}
+
+#loadingSub {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(160, 180, 200, 0.7);
+}
+
+#introOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  opacity: 1;
+  transition: opacity 1.4s ease;
+}
+
+#introOverlay.fading {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#introPrompt {
+  font-size: 13px;
+  letter-spacing: 0.3em;
+  color: rgba(235, 240, 245, 0.78);
+  text-shadow: 0 0 14px rgba(160, 190, 220, 0.35);
+  animation: promptPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes promptPulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+#introType {
+  display: none;
+  width: min(780px, 86vw);
+  font-size: 20px;
+  line-height: 1.9;
+  letter-spacing: 0.16em;
+  color: #f1f4f7;
+  text-shadow: 0 2px 14px rgba(120, 160, 200, 0.25);
+  white-space: pre-line;
+}
+
+#introOverlay.typing #introPrompt {
+  display: none;
+}
+
+#introOverlay.typing #introType {
+  display: block;
+}
+
+#introOverlay.flying #introPrompt {
+  display: none;
+}
+
+#introOverlay.flying #introType {
+  display: block;
+}
+
+#introCursor {
+  display: inline;
+  margin-left: 3px;
+  color: #f1f4f7;
+  animation: cursorBlink 0.75s steps(1) infinite;
+}
+
+@keyframes cursorBlink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+
+#complete {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 5, 8, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+#complete .panel {
+  width: min(520px, 90vw);
+  padding: 34px 38px;
+  border: 1px solid rgba(255, 183, 77, 0.35);
+  background: rgba(8, 12, 18, 0.88);
+}
+
+#complete .eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  color: #ffb74d;
+}
+
+#complete h1 {
+  margin: 12px 0 8px;
+  font-size: 30px;
+  letter-spacing: 0.08em;
+}
+
+#complete p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: rgba(215, 226, 236, 0.82);
+}
+
+#restartBtn {
+  pointer-events: auto;
+  margin-top: 18px;
+  padding: 10px 22px;
+  border: 1px solid rgba(255, 183, 77, 0.6);
+  background: transparent;
+  color: #ffd79a;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+}
+
+#restartBtn:hover {
+  background: rgba(255, 183, 77, 0.12);
+}
+
+#debugPanel {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  min-width: 380px;
+  padding: 10px 14px;
+  border: 1px solid rgba(120, 220, 150, 0.45);
+  background: rgba(4, 10, 8, 0.82);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.dpHead {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: rgba(190, 235, 205, 0.9);
+}
+
+.dpHead b {
+  margin-left: 8px;
+  color: #ffb74d;
+}
+
+#debugSelected {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #dff5e6;
+}
+
+#debugInfo {
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: rgba(180, 215, 195, 0.75);
+}
+
+.dpHint {
+  margin-top: 7px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(160, 190, 175, 0.6);
+}

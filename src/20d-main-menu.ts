@@ -13,7 +13,7 @@ function showMainMenuPage(page = '', focus = true) {
     singleMenu: ['单人模式', 'TOTAL FRONTLINE — 选择作战地图'],
     loadoutMenu: ['武器配置', 'TOTAL FRONTLINE — 作战装备终端'],
     settingsMenu: ['全局设置', 'TOTAL FRONTLINE — 系统与操作'],
-    campaignMenu: ['单人战役', 'TOTAL FRONTLINE — 剧情行动'],
+    campaignMenu: ['单人战役', 'TOTAL FRONTLINE — 暂无可用行动'],
   };
   const label = labels[activeMenuPage] || ['作战终端', 'TOTAL FRONTLINE — 作战终端'];
   $('menuContext').textContent = label[0];

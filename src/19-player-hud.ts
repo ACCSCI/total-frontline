@@ -68,31 +68,13 @@ const player: any = {
   lastHurt: 0,
 };
 const G: any = {
-  running: false,
-  over: false,
-  paused: false,
-  started: false,
-  time: 600,
-  kills: 0,
-  deaths: 0,
-  respawnT: 0,
-  protect: 0,
-  streak: 0,
-  uavT: 0,
-  empT: 0,
-  airstrike: null,
-  streaksReady: [],
-  heli: null,
-  gunship: null,
-  jug: false,
-  headshots: 0,
-  shots: 0,
-  hits: 0,
-  elapsed: 0,
-  dmgFlash: 0,
-  lowPulse: 0,
-  hbTimer: 0,
-  killFlash: 0,
+  running: false, over: false, paused: false, started: false,
+  mode: 'skirmish', mission: null,
+  time: 600, kills: 0, deaths: 0, respawnT: 0, protect: 0,
+  streak: 0, uavT: 0, empT: 0, airstrike: null, streaksReady: [],
+  heli: null, gunship: null, jug: false,
+  headshots: 0, shots: 0, hits: 0, elapsed: 0,
+  dmgFlash: 0, lowPulse: 0, hbTimer: 0, killFlash: 0,
   grace: GRACE_TIME, // hostiles hold fire while you get your bearings
 };
 
@@ -118,6 +100,7 @@ const UI: Record<string, any> = {
   reloadHint: $('reloadHint'),
   timer: $('timer'),
   killCount: $('killCount'),
+  missionObj: $('missionObj'),
   streakPop: $('streakPop'),
   streakLine: $('streakLine'),
   streakDock: $('streakDock'),
@@ -262,13 +245,15 @@ function killFeed(victim, head, killer) {
   }, 4200);
   while (UI.feed.children.length > 5) UI.feed.firstChild.remove();
 }
-/* killstreaks waiting on the player's call — docked on the left, keys F1–F5 */
+/* killstreaks waiting on the player's call — docked on the left, keys F1–F6 */
 function updateStreakDock() {
-  const keys = ['F1', 'F2', 'F3', 'F4', 'F5'];
+  const keys = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6'];
   let html = '';
-  G.streaksReady.forEach((s, i) => {
-    html += `<div class="sk"><b>${keys[i]}</b><span>${s.name}</span></div>`;
-  });
+  if (killstreaksEnabled()) {
+    G.streaksReady.forEach((s, i) => {
+      html += `<div class="sk"><b>${keys[i]}</b><span>${s.name}</span></div>`;
+    });
+  }
   UI.streakDock.innerHTML = html;
 }
 function pushComms(who, text) {

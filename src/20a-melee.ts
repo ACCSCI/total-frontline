@@ -46,7 +46,10 @@ function startMelee() {
   camera.getWorldDirection(_fwd);
   meleeRay.set(camera.position, _fwd);
   meleeRay.far = 2.35;
-  const hit = meleeRay.intersectObjects(enemyHitMeshes.concat(worldSolid), false)[0];
+  const hit = meleeRay.intersectObjects(
+    enemyHitMeshes.concat(worldSolidCandidates(meleeRay)),
+    false
+  )[0];
   if (!hit?.object.userData?.enemy || hit.object.userData.enemy.dead) return;
   const e = hit.object.userData.enemy;
   const head = hit.object.userData.part === 'head';

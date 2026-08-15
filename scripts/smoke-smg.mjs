@@ -32,6 +32,25 @@ export async function runSmgSmoke(page, check) {
       const incoming = w.vm.newMag.visible;
       reloadOk.push(removed && incoming);
     }
+    const emptyAuto = [0, 1, 2, 3, 4, 5, 6, 7].every((i) => {
+      const w = WEAPONS[i];
+      player.weapon = i;
+      player.reloadT = player.pumpT = player.boltT = player.fireCooldown = player.switching = 0;
+      player.meleeT = player.sprintFireRaise = 0;
+      player.sprint = false;
+      delete w.reloadState;
+      w.mag = 1;
+      w.res = Math.max(8, w.res);
+      fireWeapon();
+      if (player.boltT > 0 || player.pumpT > 0) {
+        player.boltT = player.pumpT = 0;
+        maybeAutoReload();
+      }
+      const ok = player.reloadT > 0 && w.mag === 0;
+      player.reloadT = 0;
+      delete w.reloadState;
+      return ok;
+    });
     player.weapon = saved;
     clearAllReloadProgress();
     return {
@@ -43,6 +62,7 @@ export async function runSmgSmoke(page, check) {
       reloads: reloadOk.every(Boolean),
       slots: document.querySelectorAll('.slot').length,
       icons: WICONS.length,
+      emptyAuto,
     };
   });
   console.log('smgs:', JSON.stringify(result));
@@ -59,4 +79,5 @@ export async function runSmgSmoke(page, check) {
     'Vector and P90 models and combat profiles are complete'
   );
   check(result.reloads, 'Vector and P90 use distinct removable and incoming magazine objects');
+  check(result.emptyAuto, 'emptying any normal magazine starts a reload after bolt or pump');
 }

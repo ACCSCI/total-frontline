@@ -53,6 +53,12 @@ function restoreReloadPlayerState(state) {
   state.active = true;
 }
 
+function maybeAutoReload() {
+  const w = WEAPONS[player.weapon];
+  if (!w || w.infiniteAmmo || w.mag > 0 || w.res <= 0) return;
+  startReload();
+}
+
 function startReload() {
   const w = WEAPONS[player.weapon];
   if (

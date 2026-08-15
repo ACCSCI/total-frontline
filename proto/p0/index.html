@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>TF P0 — WebGPU Graybox「黑森林河谷」</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+    <canvas id="screenRain"></canvas>
+
+    <div id="hud" hidden>
+      <div id="beaconLayer"></div>
+      <div id="topLeft">
+        <div id="missionTag">P0 VERTICAL SLICE // 黑森林河谷</div>
+        <div id="rendererBadge">RENDERER: DETECTING…</div>
+      </div>
+
+      <div id="objectiveBox">
+        <div id="objectiveHead">当前目标</div>
+        <div id="objectiveText">正在初始化任务…</div>
+      </div>
+
+      <div id="campaignHud">
+        <div id="p0Loadout">
+          <div id="p0SlotA" class="p0Slot active">1 M4 卡宾枪</div>
+          <div id="p0SlotB" class="p0Slot">2 空</div>
+          <div id="p0Ammo">30 / 90</div>
+        </div>
+        <div id="p0Throwables">
+          <div id="p0Tac" class="p0Throw">Q 闪光 ×1</div>
+          <div id="p0Lethal" class="p0Throw">G 手雷 ×1</div>
+        </div>
+        <div id="p0PickupPrompt" hidden></div>
+      </div>
+      <div id="p0Flash"></div>
+      <div id="p0Damage"></div>
+      <div id="p0Hitmark"><i></i><i></i><i></i><i></i></div>
+
+      <div id="cutsceneBars" hidden><div id="barTop"></div><div id="barBottom"></div><div id="cutsceneText"></div></div>
+
+      <div id="hint">
+        <div>单击进入战场 · WASD 移动 · SHIFT 疾跑 · SPACE 跳跃</div>
+        <div>ESC 释放鼠标 · 沿河谷推进至公路桥</div>
+      </div>
+
+      <div id="crosshair"><i class="ch cht"></i><i class="ch chb"></i><i class="ch chl"></i><i class="ch chr"></i><i class="chDot"></i></div>
+
+      <div id="assetStatus">资产流：等待初始化…</div>
+    </div>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <div id="loadingText">正在启动 WebGPU 渲染器…</div>
+      <div id="loadingSub">P0 技术验证 · 全新线性地图 · 即时演算过场 · glTF 流式加载</div>
+    </div>
+
+    <div id="introOverlay" hidden>
+      <div id="introPrompt">单击进入任务简报</div>
+      <div id="introType">
+        <span id="introTyped"></span><span id="introCursor">▌</span>
+      </div>
+    </div>
+
+    <div id="complete" hidden>
+      <div class="panel">
+        <div class="eyebrow">P0 GRAYBOX COMPLETE</div>
+        <h1>抵达公路桥</h1>
+        <p>线性关卡、实时 CG、WebGPU 渲染与 glTF 流式加载已全部跑通。</p>
+        <button id="restartBtn" type="button">重新进入战场</button>
+      </div>
+    </div>
+
+    <div id="debugPanel" hidden>
+      <div class="dpHead">地图调试模式 <b id="debugState">OFF</b></div>
+      <div id="debugSelected">未选中物体</div>
+      <div id="debugInfo"></div>
+      <div class="dpHint">F2 开关 · 左键点选 · 滚轮/PageUp/PageDown 调高度 · L 输出调整日志</div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

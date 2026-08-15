@@ -186,8 +186,9 @@
   @keyframes cmin{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
   .cm.out{opacity:0;transition:opacity .5s linear;}
 
-  /* killstreak dock, left side above the comms */
+  /* killstreak dock, left side above the comms — hidden in campaign */
   #streakDock{position:absolute;left:26px;top:248px;display:flex;flex-direction:column;gap:5px;align-items:flex-start;}
+  body.campaign #streakDock, body.campaign #streakPop, body.campaign #streakLine{display:none;}
   .sk{display:flex;align-items:center;gap:8px;padding:5px 11px;font-size:10.5px;letter-spacing:.16em;font-weight:700;
     color:#fff;border-left:2px solid var(--amber);background:rgba(255,179,64,.10);animation:kfin .22s ease-out;}
   .sk b{font-size:9.5px;color:var(--amber);border:1px solid rgba(255,179,64,.55);padding:1px 5px;font-weight:800;}
@@ -203,6 +204,7 @@
   #timer.warn{color:var(--red);animation:bl 1s steps(1,end) infinite;}
   #objective{font-size:10px;letter-spacing:.26em;color:rgba(223,230,236,.55);margin-top:5px;font-weight:600;}
   #objective b{color:var(--amber);font-size:12px;}
+  #missionObj{font-size:10px;letter-spacing:.2em;color:rgba(255,179,64,.88);margin-top:4px;font-weight:700;text-shadow:0 1px 6px #000;}
   /* killstreak banner + status line */
   #streakPop{font-size:16px;font-weight:800;letter-spacing:.3em;color:var(--amber);margin-top:7px;
     opacity:0;transform:scale(.82);transition:all .18s ease-out;
@@ -398,6 +400,7 @@
   <div id="top">
     <div id="timer" class="mono">10:00</div>
     <div id="objective"><b id="killCount">0</b> 已消灭</div>
+    <div id="missionObj" hidden></div>
     <div id="streakPop"></div>
     <div id="streakLine"></div>
   </div>
@@ -452,7 +455,7 @@
       <button class="menuEntry" type="button" data-menu-target="singleMenu"><span class="code">01 // SOLO</span><strong>单人模式</strong><small>选择战区并投入 6 对 6 死亡竞赛</small></button>
       <button class="menuEntry" type="button" data-menu-target="loadoutMenu"><span class="code">02 // LOADOUT</span><strong>武器配置</strong><small>配置主武器瞄具、枪口、握把与弹匣</small></button>
       <button class="menuEntry" type="button" data-menu-target="settingsMenu"><span class="code">03 // SYSTEM</span><strong>全局设置</strong><small>灵敏度、视野、音量与操作偏好</small></button>
-      <button class="menuEntry" type="button" data-menu-target="campaignMenu"><span class="code">04 // CAMPAIGN</span><strong>单人战役</strong><small>独立剧情行动与任务简报</small><span class="badge">开发中</span></button>
+      <button class="menuEntry" type="button" data-menu-target="campaignMenu"><span class="code">04 // CAMPAIGN</span><strong>单人战役</strong><small>剧情行动尚未部署</small><span class="badge">0 任务</span></button>
     </nav>
     <div id="menuOverview"><span>ESC 返回上一级</span><span id="menuRendererState">WEBGPU 检测中</span></div>
 
@@ -490,8 +493,8 @@
     </section>
 
     <section class="menuPage" id="campaignMenu" hidden aria-labelledby="campaignMenuTitle">
-      <div class="menuPageHead"><button class="menuBack" type="button">‹ 返回</button><div><span>STORY OPERATIONS</span><h2 id="campaignMenuTitle">单人战役</h2></div></div>
-      <div class="campaignPlate"><b>战役正在集结</b><p>剧情任务、任务简报与检查点系统正在开发。本入口先独立保留，后续战役内容不会与现有死亡竞赛地图混在一起。</p><span class="status">COMING IN A FUTURE UPDATE</span></div>
+      <div class="menuPageHead"><button class="menuBack" type="button">‹ 返回</button><div><span>STORY OPERATIONS / 0</span><h2 id="campaignMenuTitle">单人战役</h2></div></div>
+      <div class="hint">暂无可用行动</div>
     </section>
   </div>
 </div>

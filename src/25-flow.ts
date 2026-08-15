@@ -204,7 +204,11 @@ function respawnPlayer() {
 
 /* ------------------------- killstreaks -------------------------
    3 侦察机 / 5 空袭 / 7 电磁脉冲 / 8 武装直升机 / 10 空中炮艇 / 12 无畏战士。
-   达标只进待命栏（屏幕左侧），按 F1–F5 手动释放；阵亡清连杀，不清已就绪奖励。 */
+   达标只进待命栏（屏幕左侧），按 F1–F6 手动释放；阵亡清连杀，不清已就绪奖励。
+   战役不给连杀：不计数、不入栏、不能手动释放。 */
+function killstreaksEnabled() {
+  return G.mode !== 'mission';
+}
 const STREAK_LADDER = [
   { at: 3, id: 'uav', name: '无人侦察机' },
   { at: 5, id: 'airstrike', name: '空袭' },
@@ -223,10 +227,11 @@ function streakPop(text) {
   (streakPop as any)._t = setTimeout(() => UI.streakPop.classList.remove('on'), 2600);
 }
 function noteKillstreak() {
+  if (!killstreaksEnabled()) return;
   G.streak++;
   for (const s of STREAK_LADDER) {
     if (s.at !== G.streak) continue;
-    if (G.streaksReady.length >= 5) break; // the dock has five slots, F1–F5
+    if (G.streaksReady.length >= 6) break; // the dock has six slots, F1–F6
     G.streaksReady.push(s);
     updateStreakDock();
     streakPop(s.name + ' 已就绪 — 按 F' + G.streaksReady.length);
@@ -234,6 +239,7 @@ function noteKillstreak() {
   }
 }
 function activateStreak(i) {
+  if (!killstreaksEnabled()) return;
   const s = G.streaksReady[i];
   if (!s || player.dead || !G.running) return;
   G.streaksReady.splice(i, 1);
@@ -304,7 +310,7 @@ function explodeAt(x, z, killer?) {
       grav: -16,
     });
   const dCam = Math.hypot(x - camera.position.x, z - camera.position.z);
-  SFX.boom(clamp((x - camera.position.x) / 16, -1, 1), dCam);
+  SFX.boom(SFX.panAt(x, z), dCam);
   player.shake = Math.min(1.6, player.shake + clamp(1.3 - dCam / 26, 0, 1.1));
   for (const e of enemies) {
     if (e.dead) continue;
@@ -406,7 +412,7 @@ function skyTarget(from, maxDist, minPlayerDist) {
     _revDir.divideScalar(len);
     losRay.set(from, _revDir);
     losRay.far = len - 0.4;
-    if (losRay.intersectObjects(worldSolid, false).length) continue;
+    if (intersectWorldSolid(losRay).length) continue;
     bd = d;
     best = e;
   }
@@ -422,11 +428,7 @@ function heliShoot(h, e) {
   );
   enemyMuzzleFlash(from);
   spawnTracer(from, _skyEnd, 0xffd27a, 1.4);
-  SFX.gunshot(
-    'rifle',
-    clamp((from.x - camera.position.x) / 16, -1, 1),
-    from.distanceTo(camera.position)
-  );
+  SFX.gunshot('rifle', SFX.panAt(from.x, from.z), from.distanceTo(camera.position));
   if (Math.random() < 0.5) {
     _revDir.subVectors(_skyEnd, from).normalize();
     damageEnemy(e, rand(14, 22), false, _revDir, _skyEnd, '武装直升机');
@@ -473,6 +475,7 @@ function updateHeli(dt) {
 }
 function startGame() {
   document.body.classList.remove('menu-open');
+  document.body.classList.toggle('campaign', G.mode === 'mission');
   SFX.menuMusic(false);
   resetWorldState();
   spawnAllies();
@@ -488,7 +491,7 @@ function startGame() {
 }
 function restart() {
   UI.endScreen.classList.add('hide');
-  startGame();
+  if (!restartMission()) startGame();
 }
 /* back to the main menu: clean field, live map behind the menu cards */
 function showMenu() {
@@ -501,6 +504,7 @@ function showMenu() {
   UI.hud.classList.remove('on');
   UI.endScreen.classList.add('hide');
   resetWorldState();
+  clearCampaign();
   UI.startScreen.classList.remove('hide');
   document.body.classList.add('menu-open');
   showMainMenuPage('', false);
@@ -535,11 +539,25 @@ function endGame(win) {
      or they float over the debrief */
   for (const e of enemies) e.tag.sprite.visible = false;
   for (const a of allies) a.tag.sprite.visible = false;
+  const missionRound = G.mode === 'mission';
+  clearMission();
   const es = UI.endScreen;
   es.classList.remove('hide', 'win', 'lose');
   es.classList.add(win ? 'win' : 'lose');
-  $('endTitle').textContent = win ? '死斗胜利' : '死斗失败';
-  $('endTag').textContent = win ? '战报 // 击坠王' : '战报 // 寡不敌众';
+  $('endTitle').textContent = missionRound
+    ? win
+      ? '任务完成'
+      : '任务失败'
+    : win
+      ? '死斗胜利'
+      : '死斗失败';
+  $('endTag').textContent = missionRound
+    ? win
+      ? '战报 // 目标达成'
+      : '战报 // 行动中止'
+    : win
+      ? '战报 // 击坠王'
+      : '战报 // 寡不敌众';
   $('sKills').textContent = G.kills;
   $('sHeads').textContent = G.headshots;
   const acc = G.shots > 0 ? Math.round((G.hits / G.shots) * 100) : 0;

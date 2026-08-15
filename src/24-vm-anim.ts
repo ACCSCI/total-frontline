@@ -72,8 +72,10 @@ function updateViewmodel(dt, mdx, mdy) {
     ry = vm.baseRot.y,
     rz = vm.baseRot.z;
 
-  /* bob synced to footsteps */
-  const amp = player.bobAmp;
+  /* Compressed high-ready: stock in the pec, muzzle up along the ribs. */
+  const sprintK = damp(vm._sprintK || 0, player.sprint && player.bobAmp > 0.6 ? 1 : 0, 9, dt);
+  vm._sprintK = sprintK;
+  const amp = player.bobAmp * (1 - sprintK * 0.65);
   px += Math.sin(player.bob) * (heavy ? 0.015 : 0.022) * amp;
   py += (Math.abs(Math.cos(player.bob)) - 0.5) * (heavy ? 0.028 : 0.02) * amp;
   rz += Math.sin(player.bob) * (heavy ? 0.044 : 0.03) * amp;
@@ -85,17 +87,12 @@ function updateViewmodel(dt, mdx, mdy) {
     rx += clamp(player.vel.y * 0.01, -0.09, 0.09);
   }
 
-  /* Left-side tactical sprint carry. Positive yaw points the muzzle toward
-     screen-left; the negative X offset keeps the receiver on that side rather
-     than parking it under the crosshair. */
-  const sprintK = damp(vm._sprintK || 0, player.sprint && player.bobAmp > 0.6 ? 1 : 0, 9, dt);
-  vm._sprintK = sprintK;
-  px = lerp(px, heavy ? -0.045 : -0.085, sprintK);
-  py -= sprintK * (heavy ? 0.1 : 0.12);
-  pz += sprintK * (heavy ? 0.075 : 0.095);
-  rx = lerp(rx, heavy ? 0.34 : 0.42, sprintK);
-  ry = lerp(ry, heavy ? 0.24 : 0.4, sprintK);
-  rz = lerp(rz, heavy ? -0.16 : -0.28, sprintK);
+  px = lerp(px, heavy ? -0.01 : -0.048, sprintK);
+  py -= sprintK * (heavy ? 0.17 : 0.208);
+  pz += sprintK * (heavy ? 0.2 : 0.275);
+  rx = lerp(rx, heavy ? 0.68 : 0.86, sprintK);
+  ry = lerp(ry, heavy ? 0.4 : 0.46, sprintK);
+  rz = lerp(rz, heavy ? -0.34 : -0.5, sprintK);
 
   /* crouch: tucked in slightly */
   const crouchK = damp(vm._crouchK || 0, player.crouch ? 1 : 0, 10, dt);

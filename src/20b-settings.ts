@@ -1,7 +1,7 @@
 'use strict';
 const REPEAT_BLOCKED_KEYS = [
   'Space', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8',
-  'F1', 'F2', 'F3', 'F4', 'F5', 'KeyV', 'KeyB', 'KeyZ',
+  'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'KeyV', 'KeyB', 'KeyZ',
 ];
 const BLOCKED_GAME_KEYS = [
   ...REPEAT_BLOCKED_KEYS, 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Tab', 'AltLeft', 'AltRight',

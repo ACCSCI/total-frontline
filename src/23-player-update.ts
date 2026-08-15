@@ -433,6 +433,7 @@ function updatePlayer(dt) {
     if (player.pumpT <= 0) {
       player.pumpT = 0;
       SFX.pumpSound(false);
+      maybeAutoReload();
     }
   }
   /* ---- bolt cycle (sniper) ---- */
@@ -455,6 +456,7 @@ function updatePlayer(dt) {
     if (player.boltT <= 0) {
       player.boltT = 0;
       player.boltPhase = 3;
+      maybeAutoReload();
     }
   }
   /* ---- weapon switch ---- */

@@ -228,9 +228,17 @@ function nukeHouse(cx, cz, facing, siding) {
     scene.add(ramp);
     worldSolid.push(ramp);
     groundMesh.push(ramp);
-    /* Keep the ramp edge visually readable, but do not seal it with an
-       invisible full-height collider: the player's radius made that wall
-       reach into the climb line and catch people halfway up. */
+    /* Solid wedge under the slope. Slice heights stay below the walking
+       surface so a climber's capsule is never inside a box; the west-most
+       slice is the missing back face. */
+    const stairZ = Z0 + 0.65,
+      slices = 6;
+    for (let i = 0; i < slices; i++) {
+      const x0 = stT + (L * i) / slices,
+        x1 = stT + (L * (i + 1)) / slices;
+      const h = H * (1 - (x1 - stT) / L) - 0.12;
+      if (h >= 0.35) addCollider((x0 + x1) / 2, 0, stairZ, x1 - x0, h, 1.1);
+    }
     const rail = new THREE.Mesh(rg.clone(), NMAT.woodDk);
     rail.scale.z = 0.08;
     rail.position.set(stT, 0, Z0 + 1.21);

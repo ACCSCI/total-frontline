@@ -95,6 +95,13 @@ const SFX: any = (() => {
     return Math.max(0.018, 0.64 / (1 + (d / 11) ** 1.65));
   }
 
+  /* Listener-relative pan. World-X stereo made every sound stay glued to
+     the map's east/west once you turned; camera +X is the ear axis. */
+  function panAt(x, z) {
+    const e = camera.matrixWorld.elements;
+    const right = (x - camera.position.x) * e[0] + (z - camera.position.z) * e[2];
+    return clamp(right / 14, -1, 1);
+  }
   function panner(pan) {
     if (!ctx.createStereoPanner) return null;
     const p = ctx.createStereoPanner();
@@ -446,6 +453,7 @@ const SFX: any = (() => {
        accessors so every sound still shares the compressor and pause state. */
     _context: () => ctx,
     _master: () => master,
+    panAt,
     radio,
     dryFire,
     magOut,

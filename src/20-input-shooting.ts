@@ -62,11 +62,14 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Digit6') switchWeapon(5);
     if (e.code === 'Digit7') switchWeapon(6);
     if (e.code === 'Digit8') switchWeapon(7);
-  if (e.code === 'F1') activateStreak(0);
-  if (e.code === 'F2') activateStreak(1);
-  if (e.code === 'F3') activateStreak(2);
-  if (e.code === 'F4') activateStreak(3);
-  if (e.code === 'F5') activateStreak(4);
+  if (killstreaksEnabled()) {
+    if (e.code === 'F1') activateStreak(0);
+    if (e.code === 'F2') activateStreak(1);
+    if (e.code === 'F3') activateStreak(2);
+    if (e.code === 'F4') activateStreak(3);
+    if (e.code === 'F5') activateStreak(4);
+    if (e.code === 'F6') activateStreak(5);
+  }
   if (e.code === 'KeyV') startMelee();
   if (e.code === 'KeyB') {
     const w = WEAPONS[player.weapon];
@@ -183,7 +186,7 @@ function requestLock() {
     UI.pause.classList.add('on');
   }, 350);
 }
-document.querySelectorAll<HTMLElement>('.mapCard').forEach((card) => {
+document.querySelectorAll<HTMLElement>('.mapCard[data-map]:not([data-mission])').forEach((card) => {
   const rec = card.dataset.map === 'nuke' ? MAP_NUKE : MAP_YARD;
   card.addEventListener('mouseenter', () => applyMap(rec));
   card.addEventListener('click', (e) => {
@@ -301,8 +304,6 @@ function fireWeapon() {
   let anyHit = false,
     killedSomething = false,
     headHit = false;
-  const targets = enemyHitMeshes.concat(worldSolid);
-
   for (let p = 0; p < w.pellets; p++) {
     const dir = _fwd.clone();
     const a = Math.random() * PI * 2;
@@ -314,7 +315,7 @@ function fireWeapon() {
 
     shootRay.set(camera.position, dir);
     shootRay.far = w.range;
-    const hits = shootRay.intersectObjects(targets, false);
+    const hits = shootRay.intersectObjects(enemyHitMeshes.concat(worldSolidCandidates(shootRay)), false);
     let end = camera.position.clone().addScaledVector(dir, w.range);
 
     if (hits.length) {
@@ -399,6 +400,7 @@ function fireWeapon() {
       .addScaledVector(_rgt, 0.24)
       .addScaledVector(upv, -0.08);
     ejectShell(ejPos, _rgt.clone().addScaledVector(_fwd, 0.15), false);
+    maybeAutoReload();
   }
   for (let i = 0; i < 2; i++) {
     spawnParticle(
@@ -516,7 +518,7 @@ function killEnemy(e, head, dir, killer, creditPlayer?) {
     setTimeout(() => (UI.edgeGlow.style.opacity = '0'), 130);
   }
   SFX.enemyDeath(
-    clamp((e.obj.position.x - camera.position.x) / 14, -1, 1),
+    SFX.panAt(e.obj.position.x, e.obj.position.z),
     e.obj.position.distanceTo(camera.position)
   );
   /* a man going down is louder than the shot that did it, and the squad's
