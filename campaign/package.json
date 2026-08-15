@@ -4,11 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173",
-    "build": "tsc --noEmit && vite build",
+    "dev": "node scripts/generate-viewmodels.mjs && vite --host 127.0.0.1 --port 5173",
+    "build": "node scripts/generate-viewmodels.mjs && tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "smoke": "node scripts/smoke.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node scripts/generate-viewmodels.mjs && tsc --noEmit"
   },
   "dependencies": {
     "three": "0.185.1",
