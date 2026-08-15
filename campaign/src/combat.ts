@@ -11,7 +11,7 @@ import {
 import type { P0Level } from './level';
 import type { FirstPersonPlayer } from './player';
 import { SFX } from './sfx';
-import { buildSoldierModel, cloneSoldierRig, type SoldierRig } from './soldier';
+import { buildSoldierModel, cloneSoldierRig, ENEMY_NAMES, type SoldierRig } from './soldier';
 
 function makePickupRoot(color: number, label: string): THREE.Group {
   const root = new THREE.Group();
@@ -115,13 +115,16 @@ export class P0Combat {
     const positions = missionsData.mission01.enemyPositions.map(
       (p) => new THREE.Vector3(p.x, 0, p.z)
     );
-    for (const pos of positions) {
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i];
+      const name = ENEMY_NAMES[i % ENEMY_NAMES.length];
       const root = new THREE.Group();
       const soldier = this.spawnTemplate
-        ? cloneSoldierRig(this.spawnTemplate)
-        : buildSoldierModel();
+        ? cloneSoldierRig(this.spawnTemplate, name)
+        : buildSoldierModel(name);
       this.spawnTemplate ||= soldier;
       root.add(soldier.model);
+      root.add(soldier.tag.sprite);
       root.position.set(pos.x, this.level.groundY(pos.x, pos.z) + 0.02, pos.z);
       root.userData.enemyRoot = root;
       root.userData.debugKind = 'enemy';
@@ -146,14 +149,17 @@ export class P0Combat {
   }
 
   private spawnWave(wave: { z: number; positions: Array<{ x: number; z: number }> }) {
-    for (const p of wave.positions) {
+    for (let i = 0; i < wave.positions.length; i++) {
+      const p = wave.positions[i];
+      const name = ENEMY_NAMES[(this.enemies.length + i) % ENEMY_NAMES.length];
       const pos = new THREE.Vector3(p.x, 0, p.z);
       const root = new THREE.Group();
       const soldier = this.spawnTemplate
-        ? cloneSoldierRig(this.spawnTemplate)
-        : buildSoldierModel();
+        ? cloneSoldierRig(this.spawnTemplate, name)
+        : buildSoldierModel(name);
       this.spawnTemplate ||= soldier;
       root.add(soldier.model);
+      root.add(soldier.tag.sprite);
       root.position.set(pos.x, this.level.groundY(pos.x, pos.z) + 0.02, pos.z);
       root.userData.enemyRoot = root;
       root.userData.debugKind = 'enemy';
@@ -267,6 +273,7 @@ export class P0Combat {
       enemy.hitFlash = 0.12;
       enemy.engaged = true;
       enemy.reactionT = Math.min(enemy.reactionT, 0.25);
+      enemy.soldier.tag.draw(enemy.health, enemy.engaged);
       if (this.hitEl) {
         this.hitEl.classList.add('on');
         setTimeout(() => this.hitEl.classList.remove('on'), 90);
@@ -296,6 +303,7 @@ export class P0Combat {
     enemy.alive = false;
     enemy.deathT = 0.75;
     enemy.health = 0;
+    enemy.soldier.tag.draw(0, false);
     this.kills++;
     const x = enemy.root.position.x;
     const z = enemy.root.position.z;
