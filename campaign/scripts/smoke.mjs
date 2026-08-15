@@ -280,7 +280,16 @@ const systems = await page.evaluate(() => {
     adsEase: campaign.adsEase,
   };
   const def = campaign.activeWeapon?.def;
-  const weaponData = !!def && def.adsFov > 0 && def.reloadTime > 0 && def.spreadBase > 0;
+  const weaponData =
+    !!def &&
+    def.adsFov > 0 &&
+    def.reloadTime > 0 &&
+    def.tacticalReloadTime > 0 &&
+    def.drawTime > 0 &&
+    def.spreadBase > 0 &&
+    def.spreadMax > def.spreadBase &&
+    def.recoilKick > 0 &&
+    def.camPitch > 0;
 
   campaign.shoot();
   const fireCooldown = campaign.fireT > 0;

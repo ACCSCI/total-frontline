@@ -36,6 +36,11 @@ export class FirstPersonPlayer {
   prone = false;
   height = STANCE.standHeight;
   aimEase = 0;
+  recoilPitch = 0;
+  recoilYaw = 0;
+  recoilVelP = 0;
+  recoilVelY = 0;
+  fovKick = 0;
   private pos = new THREE.Vector3(0, 0, 82);
   private vel = new THREE.Vector3();
   private onGround = true;
@@ -58,6 +63,14 @@ export class FirstPersonPlayer {
 
   get horizontalSpeed(): number {
     return Math.hypot(this.vel.x, this.vel.z);
+  }
+
+  get grounded(): boolean {
+    return this.onGround;
+  }
+
+  get verticalSpeed(): number {
+    return this.vel.y;
   }
 
   addYaw(delta: number) {
@@ -176,6 +189,15 @@ export class FirstPersonPlayer {
     const bob = moving && this.onGround ? Math.sin(this.bobT) * 0.028 : 0;
     const eye = this.pos.y + this.height * 0.92 + bob;
     this.camera.position.set(this.pos.x, eye, this.pos.z);
+
+    /* Recoil is the same damped spring as the single-player camera. */
+    this.recoilVelP = THREE.MathUtils.damp(this.recoilVelP, 0, 16, dt);
+    this.recoilVelY = THREE.MathUtils.damp(this.recoilVelY, 0, 16, dt);
+    this.recoilPitch += this.recoilVelP * dt;
+    this.recoilYaw += this.recoilVelY * dt;
+    this.recoilPitch = THREE.MathUtils.damp(this.recoilPitch, 0, 6.5, dt);
+    this.recoilYaw = THREE.MathUtils.damp(this.recoilYaw, 0, 6.5, dt);
+    this.fovKick = THREE.MathUtils.damp(this.fovKick, 0, 13, dt);
     this.applyView();
 
     if (moving && this.onGround && this.horizontalSpeed > 0.6) {
@@ -190,7 +212,7 @@ export class FirstPersonPlayer {
     }
 
     const fovTarget = wantSprint && this.horizontalSpeed > 4.5 ? this.baseFov + 7.5 : this.baseFov;
-    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, fovTarget, 0.2);
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, fovTarget, 0.2) + this.fovKick;
     this.camera.updateProjectionMatrix();
   }
 
@@ -212,6 +234,11 @@ export class FirstPersonPlayer {
     this.prone = false;
     this.height = STANCE.standHeight;
     this.aimEase = 0;
+    this.recoilPitch = 0;
+    this.recoilYaw = 0;
+    this.recoilVelP = 0;
+    this.recoilVelY = 0;
+    this.fovKick = 0;
     this.snapToGround(level);
     this.applyView();
   }
@@ -228,7 +255,15 @@ export class FirstPersonPlayer {
   }
 
   private applyView() {
-    this.camera.rotation.set(this.pitch, this.yaw, 0);
+    this.camera.rotation.set(this.pitch + this.recoilPitch, this.yaw + this.recoilYaw, 0);
+  }
+
+  applyRecoil(camPitch: number, camYaw: number, fovKick: number, scale: number, burst: number) {
+    const vert = burst === 0 ? 1.55 : burst < 4 ? 1.12 : 0.82 + Math.sin(burst * 0.9) * 0.1;
+    const drift = Math.sin(burst * 0.62) * 0.85 + Math.sin(burst * 0.23 + 1.1) * 0.45;
+    this.recoilVelP += camPitch * 38 * vert * scale;
+    this.recoilVelY += (drift + (Math.random() - 0.5) * 0.55) * camYaw * 38 * scale;
+    this.fovKick = Math.min(3.2, this.fovKick + fovKick * scale);
   }
 
   resize() {

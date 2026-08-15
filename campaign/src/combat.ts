@@ -206,27 +206,45 @@ export class P0Combat {
   }
 
   shoot(camera: THREE.PerspectiveCamera): boolean {
-    const def = this.rules.activeWeapon?.def;
-    if (!def || !this.rules.shoot()) return false;
-    SFX.gunshot(def.id);
+    const w = this.rules.activeWeapon;
+    if (!w || !this.rules.tryFire(this.rules.triggerReleased)) return false;
+    const def = w.def;
+    const stanceScale = this.player.prone ? 0.56 : this.player.crouch ? 0.8 : 1;
+    const recoilScale = THREE.MathUtils.lerp(1, def.adsRecoil, this.rules.adsEase) * stanceScale;
+    this.player.applyRecoil(
+      def.camPitch,
+      def.camYaw,
+      def.fovKick,
+      recoilScale,
+      Math.max(0, this.rules.burstCount - 1)
+    );
+    SFX.gunshot(def.sound);
     camera.getWorldDirection(this.rayDir);
     this.rayRight.crossVectors(this.rayDir, camera.up).normalize();
     this.rayUp.crossVectors(this.rayRight, this.rayDir).normalize();
+
+    /* The exact single-player cone: weapon heat + movement + air + stance + ADS. */
+    const speed = this.player.horizontalSpeed;
+    let spread = w.spread + (speed / 7) * def.moveSpread;
+    if (!this.player.grounded) spread += def.airSpread;
+    if (this.player.prone) spread *= Math.max(0.28, def.crouchMult * 0.55);
+    else if (this.player.crouch) spread *= def.crouchMult;
+    spread *= THREE.MathUtils.lerp(1, def.adsSpread, this.rules.adsEase);
+
     const pellets = Math.max(1, def.pellets);
     const objects: THREE.Object3D[] = [];
     for (const e of this.enemies) if (e.alive) objects.push(e.root);
 
     for (let i = 0; i < pellets; i++) {
-      const spread = def.spreadBase * (this.rules.adsEase > 0.5 ? 0.55 : 1);
-      const ox = (Math.random() - 0.5) * spread * 2;
-      const oy = (Math.random() - 0.5) * spread * 2;
+      const a = Math.random() * Math.PI * 2;
+      const r = (pellets > 1 ? Math.sqrt(Math.random()) : Math.random()) * spread;
       const dir = this.rayDir
         .clone()
-        .addScaledVector(this.rayRight, ox)
-        .addScaledVector(this.rayUp, oy)
+        .addScaledVector(this.rayRight, Math.cos(a) * r)
+        .addScaledVector(this.rayUp, Math.sin(a) * r)
         .normalize();
       this.raycaster.set(camera.position, dir);
-      this.raycaster.far = 200;
+      this.raycaster.far = def.range;
       const hits = this.raycaster.intersectObjects(objects, true);
       if (!hits.length) continue;
       let node: THREE.Object3D | null = hits[0].object;
@@ -238,7 +256,14 @@ export class P0Combat {
       const enemy = node ? this.enemies.find((e) => e.root === node) : null;
       if (!enemy?.alive) continue;
       if (this.losBlocked(camera.position, enemy.root.position)) continue;
-      enemy.health -= def.baseDamage * (headshot ? 2 : 1);
+      const dist = hits[0].distance;
+      const falloff = THREE.MathUtils.clamp(
+        1 - Math.max(0, dist - def.falloffStart) / Math.max(1, def.falloffRange),
+        def.falloffMin,
+        1
+      );
+      const dmg = def.baseDamage * falloff * (headshot ? def.headMult : 1);
+      enemy.health -= dmg;
       enemy.hitFlash = 0.12;
       enemy.engaged = true;
       enemy.reactionT = Math.min(enemy.reactionT, 0.25);

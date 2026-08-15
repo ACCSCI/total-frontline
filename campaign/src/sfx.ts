@@ -250,6 +250,7 @@ const SFX = (() => {
     dur?: number;
     type?: OscillatorType;
     delay?: number;
+    lp?: number;
   }) {
     if (!ctx || !master) return;
     const t0 = ctx.currentTime + (o.delay || 0);
@@ -262,7 +263,15 @@ const SFX = (() => {
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, o.gain || 0.1), t0 + 0.05);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + (o.dur || 1.2));
     osc.connect(g);
-    g.connect(master);
+    if (o.lp) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = o.lp;
+      g.connect(lp);
+      lp.connect(master);
+    } else {
+      g.connect(master);
+    }
     osc.start(t0);
     osc.stop(t0 + (o.dur || 1.2) + 0.05);
   }
@@ -342,25 +351,166 @@ const SFX = (() => {
     toneBurst({ f0: 2200, f1: 900, gain: 0.07, dur: 0.45, type: 'sine', delay: 0.02 });
   }
 
-  function gunshot(weaponId = 'm4') {
-    const prof = {
-      m4: { freq: 1050, sweep: 240, gain: 0.42 },
-      ks12: { freq: 520, sweep: 130, gain: 0.6 },
-      sr7: { freq: 820, sweep: 190, gain: 0.52 },
-      ak12: { freq: 980, sweep: 220, gain: 0.44 },
-      p90: { freq: 1250, sweep: 300, gain: 0.34 },
-      p9: { freq: 1150, sweep: 260, gain: 0.3 },
-    }[weaponId] || { freq: 1050, sweep: 240, gain: 0.42 };
+  function magOut() {
+    noiseBurst({ type: 'bandpass', freq: 2300, q: 2, gain: 0.32, dur: 0.09 });
+    toneBurst({ type: 'square', f0: 620, f1: 260, dur: 0.065, gain: 0.12, lp: 2600 });
+    noiseBurst({ type: 'lowpass', freq: 700, gain: 0.18, dur: 0.08, delay: 0.055 });
+  }
+
+  function magIn() {
+    noiseBurst({ type: 'lowpass', freq: 1500, gain: 0.42, dur: 0.11, atk: 0.001 });
+    toneBurst({ type: 'square', f0: 310, f1: 105, dur: 0.085, gain: 0.16, lp: 1900 });
+    noiseBurst({ type: 'highpass', freq: 2600, gain: 0.15, dur: 0.035, delay: 0.065 });
+  }
+
+  function boltClick() {
+    noiseBurst({ type: 'highpass', freq: 3200, gain: 0.24, dur: 0.05, atk: 0.001 });
+    toneBurst({ type: 'square', f0: 1100, f1: 600, dur: 0.04, gain: 0.08, lp: 5000 });
+  }
+
+  function dryFire() {
+    toneBurst({ type: 'square', f0: 1500, f1: 700, dur: 0.035, gain: 0.1, lp: 4000 });
+    noiseBurst({ type: 'highpass', freq: 3000, gain: 0.1, dur: 0.04 });
+  }
+
+  function pumpSound(back: boolean) {
     noiseBurst({
-      type: 'lowpass',
-      freq: prof.freq,
-      sweep: prof.sweep,
-      gain: prof.gain,
-      dur: 0.16,
-      atk: 0.002,
+      type: 'bandpass',
+      freq: back ? 1500 : 2600,
+      q: 2.2,
+      gain: 0.3,
+      dur: 0.09,
+      atk: 0.001,
     });
-    toneBurst({ f0: 190, f1: 72, gain: 0.16, dur: 0.12, type: 'sine' });
-    noiseBurst({ type: 'highpass', freq: 2600, gain: 0.13, dur: 0.05, atk: 0.0008, delay: 0.012 });
+    toneBurst({
+      type: 'square',
+      f0: back ? 380 : 820,
+      f1: back ? 200 : 420,
+      dur: 0.06,
+      gain: 0.09,
+      lp: 3000,
+    });
+  }
+
+  function boltCycle(phase: number) {
+    if (phase === 0) {
+      noiseBurst({ type: 'bandpass', freq: 2900, q: 3, gain: 0.26, dur: 0.05, atk: 0.001 });
+      noiseBurst({
+        type: 'bandpass',
+        freq: 1250,
+        q: 1.6,
+        gain: 0.3,
+        dur: 0.16,
+        atk: 0.004,
+        sweep: 830,
+        delay: 0.05,
+      });
+      toneBurst({ type: 'square', f0: 520, f1: 250, dur: 0.1, gain: 0.07, lp: 2600, delay: 0.04 });
+    } else {
+      noiseBurst({
+        type: 'bandpass',
+        freq: 1500,
+        q: 1.8,
+        gain: 0.26,
+        dur: 0.11,
+        atk: 0.003,
+        sweep: 2100,
+      });
+      noiseBurst({ type: 'highpass', freq: 3400, gain: 0.3, dur: 0.05, atk: 0.0008, delay: 0.09 });
+      toneBurst({ type: 'square', f0: 900, f1: 420, dur: 0.05, gain: 0.09, lp: 4200, delay: 0.09 });
+    }
+  }
+
+  function reloadStage(weaponId: string, stage: 'lift' | 'out' | 'in' | 'action') {
+    if (stage === 'out') magOut();
+    else if (stage === 'in') magIn();
+    else if (stage === 'action') boltClick();
+    else weaponSwap();
+  }
+
+  function gunshot(weaponId = 'm4') {
+    const ak = weaponId === 'ak12';
+    let kind: 'rifle' | 'shotgun' | 'sniper' | 'pistol' = 'rifle';
+    if (weaponId === 'ks12') kind = 'shotgun';
+    else if (weaponId === 'sr7') kind = 'sniper';
+    else if (weaponId === 'p9') kind = 'pistol';
+
+    if (kind === 'rifle') {
+      noiseBurst({ type: 'highpass', freq: 4200, gain: 0.62, dur: 0.022, atk: 0.0004 });
+      noiseBurst({
+        type: 'bandpass',
+        freq: 2100,
+        q: 0.7,
+        gain: 0.9,
+        dur: 0.14,
+        atk: 0.001,
+        sweep: 600,
+      });
+      noiseBurst({ type: 'lowpass', freq: 420, gain: 0.66, dur: 0.11, atk: 0.001 });
+      toneBurst({
+        type: 'triangle',
+        f0: ak ? 175 : 210,
+        f1: ak ? 40 : 48,
+        dur: 0.1,
+        gain: ak ? 0.5 : 0.42,
+      });
+      toneBurst({
+        type: 'sine',
+        f0: ak ? 68 : 82,
+        f1: ak ? 32 : 38,
+        dur: 0.14,
+        gain: ak ? 0.42 : 0.34,
+        lp: 200,
+      });
+      noiseBurst({ type: 'highpass', freq: 1400, gain: 0.1, dur: 0.42, atk: 0.02, delay: 0.02 });
+    } else if (kind === 'shotgun') {
+      noiseBurst({ type: 'highpass', freq: 3600, gain: 0.5, dur: 0.026, atk: 0.0004 });
+      noiseBurst({ type: 'lowpass', freq: 900, gain: 1.05, dur: 0.42, atk: 0.001, sweep: 170 });
+      noiseBurst({ type: 'bandpass', freq: 1500, q: 0.6, gain: 0.6, dur: 0.12, atk: 0.001 });
+      toneBurst({ type: 'sine', f0: 110, f1: 30, dur: 0.32, gain: 0.72 });
+      toneBurst({ type: 'sine', f0: 62, f1: 28, dur: 0.2, gain: 0.4, lp: 150 });
+      noiseBurst({ type: 'highpass', freq: 900, gain: 0.16, dur: 0.7, atk: 0.03, delay: 0.02 });
+    } else if (kind === 'sniper') {
+      noiseBurst({ type: 'highpass', freq: 5200, gain: 0.85, dur: 0.014, atk: 0.0002 });
+      noiseBurst({ type: 'highpass', freq: 3200, gain: 1, dur: 0.05, atk: 0.0005 });
+      noiseBurst({
+        type: 'bandpass',
+        freq: 1250,
+        q: 0.5,
+        gain: 1.05,
+        dur: 0.3,
+        atk: 0.0008,
+        sweep: 340,
+      });
+      noiseBurst({ type: 'lowpass', freq: 260, gain: 0.95, dur: 0.24, atk: 0.001 });
+      toneBurst({ type: 'triangle', f0: 150, f1: 34, dur: 0.28, gain: 0.62 });
+      toneBurst({ type: 'sine', f0: 58, f1: 26, dur: 0.3, gain: 0.44, lp: 150 });
+      noiseBurst({
+        type: 'bandpass',
+        freq: 900,
+        q: 0.8,
+        gain: 0.3,
+        dur: 1.25,
+        atk: 0.05,
+        delay: 0.05,
+      });
+      noiseBurst({ type: 'highpass', freq: 2200, gain: 0.14, dur: 0.85, atk: 0.03, delay: 0.02 });
+    } else {
+      noiseBurst({ type: 'highpass', freq: 4600, gain: 0.42, dur: 0.016, atk: 0.0003 });
+      noiseBurst({
+        type: 'bandpass',
+        freq: 1700,
+        q: 1.1,
+        gain: 0.7,
+        dur: 0.11,
+        atk: 0.001,
+        sweep: 520,
+      });
+      noiseBurst({ type: 'lowpass', freq: 340, gain: 0.4, dur: 0.075, atk: 0.001 });
+      toneBurst({ type: 'square', f0: 280, f1: 70, dur: 0.06, gain: 0.24, lp: 1600 });
+      toneBurst({ type: 'sine', f0: 96, f1: 44, dur: 0.1, gain: 0.2, lp: 220 });
+      noiseBurst({ type: 'highpass', freq: 1800, gain: 0.07, dur: 0.28, atk: 0.02, delay: 0.02 });
+    }
   }
 
   function enemyShot() {
@@ -374,19 +524,12 @@ const SFX = (() => {
   }
 
   function jump() {
-    noiseBurst({ type: 'lowpass', freq: 420, sweep: 190, gain: 0.09, dur: 0.09, atk: 0.001 });
-    toneBurst({ f0: 240, f1: 120, gain: 0.04, dur: 0.08, type: 'sine' });
-  }
-
-  function reload() {
-    noiseBurst({ type: 'bandpass', freq: 520, sweep: 260, gain: 0.14, dur: 0.09, atk: 0.001 });
-    noiseBurst({ type: 'highpass', freq: 2100, gain: 0.08, dur: 0.05, atk: 0.001, delay: 0.14 });
-    noiseBurst({ type: 'bandpass', freq: 900, gain: 0.11, dur: 0.07, atk: 0.001, delay: 0.32 });
+    noiseBurst({ type: 'lowpass', freq: 500, gain: 0.1, dur: 0.09 });
   }
 
   function weaponSwap() {
-    noiseBurst({ type: 'bandpass', freq: 760, gain: 0.1, dur: 0.06, atk: 0.001 });
-    noiseBurst({ type: 'bandpass', freq: 1180, gain: 0.08, dur: 0.05, atk: 0.001, delay: 0.09 });
+    noiseBurst({ type: 'lowpass', freq: 820, gain: 0.24, dur: 0.11 });
+    toneBurst({ type: 'square', f0: 280, f1: 95, dur: 0.07, gain: 0.1, lp: 1700, delay: 0.045 });
   }
 
   function update(dt: number) {
@@ -434,7 +577,11 @@ const SFX = (() => {
     enemyShot,
     enemyDown,
     jump,
-    reload,
+    reloadStage,
+    dryFire,
+    pumpSound,
+    boltCycle,
+    boltClick,
     weaponSwap,
   };
 })();

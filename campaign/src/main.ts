@@ -4,6 +4,7 @@ import { CampaignRules } from './campaign';
 import { P0Combat } from './combat';
 import { Crosshair } from './crosshair';
 import { PropDebugger } from './debug-mode';
+import { gridFootprint } from './grid';
 import { predictGroundDelta } from './ground-model';
 import { buildP0Level, buildSupplyCrate, type P0Level } from './level';
 import { FirstPersonPlayer } from './player';
@@ -143,22 +144,6 @@ function startIntroFlight() {
 }
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-function gridFootprint(
-  cx: number,
-  cz: number,
-  hw: number,
-  hd: number,
-  steps = 5
-): Array<[number, number]> {
-  const out: Array<[number, number]> = [];
-  for (let ix = 0; ix < steps; ix++) {
-    for (let iz = 0; iz < steps; iz++) {
-      out.push([cx - hw + (ix / (steps - 1)) * hw * 2, cz - hd + (iz / (steps - 1)) * hd * 2]);
-    }
-  }
-  return out;
-}
 
 async function startTyping() {
   if (introState !== 'waiting') return;
@@ -389,6 +374,7 @@ async function boot() {
         if (viewmodel.root.visible) viewmodel.update(dt, player);
         if (viewmodel.root.visible) {
           renderer.instance.autoClear = false;
+          renderer.instance.clearDepth();
           renderer.render(viewmodel.scene, viewmodel.camera);
           renderer.instance.autoClear = true;
         }
@@ -445,6 +431,7 @@ document.addEventListener('mousedown', (event) => {
   if (debug?.active || cutscene || completed || !controlsEnabled) return;
   if (document.pointerLockElement !== canvas) return;
   firing = true;
+  if (campaign) campaign.triggerReleased = true;
   if (combat?.shoot(player.camera)) {
     viewmodel?.punch();
     crosshair?.onFire();
@@ -452,7 +439,10 @@ document.addEventListener('mousedown', (event) => {
 });
 
 document.addEventListener('mouseup', (event) => {
-  if (event.button === 0) firing = false;
+  if (event.button === 0) {
+    firing = false;
+    if (campaign) campaign.triggerReleased = true;
+  }
 });
 
 addEventListener(
@@ -536,6 +526,14 @@ addEventListener('keydown', (event) => {
   }
   if (event.code === 'KeyR' && introState === 'done' && !event.repeat && controlsEnabled) {
     campaign?.startReload();
+  }
+  if (event.code === 'KeyB' && introState === 'done' && !event.repeat && controlsEnabled) {
+    const w = campaign?.activeWeapon;
+    if (w?.def.semiToggle) {
+      w.semi = !w.semi;
+      SFX.boltClick();
+      campaign?.updateHud();
+    }
   }
   if ((event.code === 'Digit1' || event.code === 'Digit2') && introState === 'done') {
     campaign?.switchSlot(event.code === 'Digit1' ? 0 : 1);
