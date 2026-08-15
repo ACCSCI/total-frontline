@@ -55,6 +55,159 @@ const state = await page.evaluate(() => {
   };
 });
 
+/* Stage 5 movement acceptance: walk/sprint/crouch/prone use the shared
+   movement data and match the single-player speed/height curve. */
+const movement = await page.evaluate(() => {
+  const d = window.__P0_DEBUG;
+  const player = d.player;
+  const level = d.level;
+  const saved = {
+    pos: player.pos.clone(),
+    vel: player.vel.clone(),
+    height: player.height,
+    yaw: player.yaw,
+    pitch: player.pitch,
+    fov: player.camera.fov,
+    onGround: player.onGround,
+    jumpHeld: player.jumpHeld,
+    proneRequested: player.proneRequested,
+    crouch: player.crouch,
+    prone: player.prone,
+    bobT: player.bobT,
+    stepPhase: player.stepPhase,
+    input: { ...player.input },
+  };
+
+  const reset = () => {
+    player.pos.set(0, 0, 82);
+    player.vel.set(0, 0, 0);
+    player.onGround = true;
+    player.jumpHeld = false;
+    player.proneRequested = false;
+    player.crouch = false;
+    player.prone = false;
+    player.height = 1.72;
+    player.camera.fov = 75;
+    player.input.forward = false;
+    player.input.back = false;
+    player.input.left = false;
+    player.input.right = false;
+    player.input.sprint = false;
+    player.input.jump = false;
+    player.input.crouch = false;
+    player.update(1 / 60, level);
+  };
+  const settle = (frames) => {
+    for (let i = 0; i < frames; i++) player.update(1 / 60, level);
+  };
+  const hspeed = () => Math.hypot(player.vel.x, player.vel.z);
+
+  reset();
+  player.input.forward = true;
+  settle(120);
+  const walkSpeed = hspeed();
+
+  reset();
+  player.input.forward = true;
+  player.input.sprint = true;
+  settle(120);
+  const sprintSpeed = hspeed();
+  const sprintFov = player.camera.fov;
+
+  reset();
+  player.input.forward = true;
+  player.input.crouch = true;
+  settle(90);
+  const crouchSpeed = hspeed();
+  const crouchHeight = player.height;
+
+  reset();
+  player.input.forward = true;
+  player.proneRequested = true;
+  settle(90);
+  const proneSpeed = hspeed();
+  const proneHeight = player.height;
+
+  player.input.forward = false;
+  player.vel.x = 0;
+  player.vel.z = 0;
+  player.onGround = true;
+  player.vel.y = 0;
+  player.pos.y = level.terrainHeight(player.pos.x, player.pos.z) + player.height * 0.5;
+  player.jumpHeld = false;
+  player.input.jump = true;
+  settle(1);
+  player.input.jump = false;
+  const proneBlocksJump = player.onGround && player.vel.y === 0;
+
+  player.input.forward = true;
+  player.input.sprint = true;
+  settle(30);
+  const proneBlocksSprint = hspeed() <= 1.2;
+  player.input.sprint = false;
+
+  player.input.crouch = true;
+  settle(60);
+  const crouchFromProne = player.crouch && !player.prone;
+  player.input.crouch = false;
+
+  player.proneRequested = true;
+  settle(1);
+  const toggledProne = player.prone;
+  player.proneRequested = true;
+  settle(1);
+  const exitedProne = !player.prone;
+
+  player.pos.copy(saved.pos);
+  player.vel.copy(saved.vel);
+  player.height = saved.height;
+  player.yaw = saved.yaw;
+  player.pitch = saved.pitch;
+  player.camera.fov = saved.fov;
+  player.onGround = saved.onGround;
+  player.jumpHeld = saved.jumpHeld;
+  player.proneRequested = saved.proneRequested;
+  player.crouch = saved.crouch;
+  player.prone = saved.prone;
+  player.bobT = saved.bobT;
+  player.stepPhase = saved.stepPhase;
+  Object.assign(player.input, saved.input);
+
+  return {
+    walkSpeed,
+    sprintSpeed,
+    sprintFov,
+    crouchSpeed,
+    crouchHeight,
+    proneSpeed,
+    proneHeight,
+    proneBlocksJump,
+    proneBlocksSprint,
+    crouchFromProne,
+    toggledProne,
+    exitedProne,
+  };
+});
+
+/* Let the main loop repaint the stance HUD from the restored state. */
+const stanceHud = await page.evaluate(async () => {
+  const d = window.__P0_DEBUG;
+  const player = d.player;
+  player.prone = true;
+  player.crouch = false;
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  const el = document.getElementById('p0Stance');
+  return {
+    text: el?.textContent || '',
+    proneClass: el?.classList.contains('prone') || false,
+  };
+});
+await page.evaluate(() => {
+  const player = window.__P0_DEBUG.player;
+  player.prone = false;
+  player.crouch = false;
+});
+
 const rules = await page.evaluate(() => {
   const d = window.__P0_DEBUG;
   const campaign = d.campaign;
@@ -112,8 +265,20 @@ if (rules.pickups < 9) failures.push('mission pickups missing');
 if (rules.enemies < 6) failures.push('enemies missing');
 if (!rules.hasViewmodel || !rules.hasCrosshair) failures.push('viewmodel/crosshair missing');
 if (rules.hasKillstreakUi) failures.push('campaign exposes killstreak UI');
+if (movement.walkSpeed < 4.6 || movement.walkSpeed > 5.1) failures.push('walk speed does not match shared movement data');
+if (movement.sprintSpeed < 7.5 || movement.sprintSpeed > 8.2) failures.push('sprint speed does not match shared movement data');
+if (movement.sprintFov < 80) failures.push('sprint FOV push is missing');
+if (movement.crouchSpeed < 2.1 || movement.crouchSpeed > 2.6) failures.push('crouch speed does not match shared movement data');
+if (Math.abs(movement.crouchHeight - 1.08) > 0.03) failures.push('crouch height does not reach shared stance height');
+if (movement.proneSpeed < 0.95 || movement.proneSpeed > 1.35) failures.push('prone speed does not match shared movement data');
+if (Math.abs(movement.proneHeight - 0.58) > 0.03) failures.push('prone height does not reach shared stance height');
+if (!movement.proneBlocksJump) failures.push('prone does not block jumping');
+if (!movement.proneBlocksSprint) failures.push('prone does not block sprinting');
+if (!movement.crouchFromProne) failures.push('crouch input does not rise out of prone');
+if (!movement.toggledProne || !movement.exitedProne) failures.push('Z prone toggle failed');
+if (stanceHud.text !== '卧倒' || !stanceHud.proneClass) failures.push('stance HUD does not report prone state');
 
-console.log(JSON.stringify({ state, rules, fps, errors, failures }, null, 2));
+console.log(JSON.stringify({ state, rules, movement, stanceHud, fps, errors, failures }, null, 2));
 await browser.close();
 
 if (errors.length || failures.length || !state.badge || !state.asset.includes('程序化')) process.exitCode = 1;

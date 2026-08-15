@@ -25,7 +25,11 @@ const FOG_COLOR = 0xa39b8d;
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0074);
 
-let BASE_FOV = clamp(Number(localStorage.getItem('tf.baseFov')) || 75, 65, 95);
+let BASE_FOV = clamp(
+  Number(localStorage.getItem('tf.baseFov')) || SHARED_MOVEMENT.stance.baseFov,
+  65,
+  95
+);
 /* Near at 0.06 against a 400 far gives a 6700:1 depth range and the far side of
    the yard starts to shimmer where two surfaces nearly meet. Nothing solid ever
    gets within the player's 0.36 collision radius and the gun renders in its own

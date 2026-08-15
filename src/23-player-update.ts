@@ -2,14 +2,14 @@
 /* =========================================================================
    17. PLAYER UPDATE
    ========================================================================= */
-const WALK_SPEED = 4.9,
-  SPRINT_SPEED = 7.9,
-  CROUCH_SPEED = 2.35;
-const ACCEL = 64,
-  AIR_ACCEL = 11,
-  FRICTION = 11.5,
-  GRAVITY = -19.5,
-  JUMP_V = 6.95;
+const WALK_SPEED = SHARED_MOVEMENT.speeds.walk,
+  SPRINT_SPEED = SHARED_MOVEMENT.speeds.sprint,
+  CROUCH_SPEED = SHARED_MOVEMENT.speeds.crouch;
+const ACCEL = SHARED_MOVEMENT.physics.acceleration,
+  AIR_ACCEL = SHARED_MOVEMENT.physics.airAcceleration,
+  FRICTION = SHARED_MOVEMENT.physics.friction,
+  GRAVITY = SHARED_MOVEMENT.physics.gravity,
+  JUMP_V = SHARED_MOVEMENT.physics.jumpVelocity;
 const DOUBLE_JUMP_V = 6.05; // second hop, slightly weaker than the first
 const BREATH_TIME = 3.0; // seconds of steady hold per breath
 /* a ledge this far above the feet can still be pulled up onto */

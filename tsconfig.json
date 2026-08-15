@@ -14,6 +14,7 @@
   "files": [
     "types/legacy-globals.d.ts",
     "src/00-core.ts",
+    "src/generated-movement.ts",
     "src/01-audio.ts",
     "src/01b-audio-weapons.ts",
     "src/01c-audio-assets.ts",

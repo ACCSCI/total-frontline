@@ -242,6 +242,21 @@ body {
   border-color: rgba(120, 130, 140, 0.25);
 }
 
+#p0Stance {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 10px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: rgba(205, 225, 240, 0.85);
+  border-left: 2px solid rgba(160, 210, 230, 0.55);
+}
+
+#p0Stance.prone {
+  color: #ffd9a0;
+  border-left-color: rgba(255, 183, 77, 0.85);
+}
+
 #p0PickupPrompt {
   position: absolute;
   left: 50%;

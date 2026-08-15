@@ -23,6 +23,7 @@ const crossCanvas = document.getElementById('cross') as HTMLCanvasElement;
 const introOverlay = document.getElementById('introOverlay') as HTMLDivElement;
 const introTyped = document.getElementById('introTyped') as HTMLSpanElement;
 const beaconLayer = document.getElementById('beaconLayer') as HTMLDivElement;
+const stanceText = document.getElementById('p0Stance') as HTMLDivElement;
 
 const scene = new THREE.Scene();
 let renderer: GameRenderer;
@@ -214,6 +215,7 @@ function handleKeys() {
   player.input.left = keys.has('KeyA') || keys.has('ArrowLeft');
   player.input.right = keys.has('KeyD') || keys.has('ArrowRight');
   player.input.sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  player.input.crouch = keys.has('AltLeft') || keys.has('AltRight');
 }
 
 async function boot() {
@@ -295,6 +297,8 @@ async function boot() {
       } else if (controlsEnabled && !completed) {
         handleKeys();
         player.update(dt, level);
+        stanceText.textContent = player.prone ? '卧倒' : player.crouch ? '蹲伏' : '站立';
+        stanceText.classList.toggle('prone', player.prone);
 
         /* objective progression along the linear corridor */
         for (const obj of level.objectives) {
@@ -319,9 +323,7 @@ async function boot() {
       lightningOn = lightning;
       SFX.update(dt);
       if (crosshair && controlsEnabled && introState === 'done' && !completed) {
-        const pi = player.input;
-        const moving = pi.forward || pi.back || pi.left || pi.right;
-        const speed = moving ? (pi.sprint ? 4.95 : 3.3) : 0;
+        const speed = player.horizontalSpeed;
         const baseSpread = campaign?.primary ? 0.0018 : 0.0022;
         crosshair.update(dt, speed, baseSpread, false);
       }
@@ -403,6 +405,9 @@ addEventListener('keydown', (event) => {
   SFX.init();
   keys.add(event.code);
   if (event.code === 'Space') player.input.jump = true;
+  if (event.code === 'KeyZ' && introState === 'done' && controlsEnabled && !cutscene && !event.repeat) {
+    player.proneRequested = true;
+  }
   if (event.code === 'F2' && introState === 'done') {
     event.preventDefault();
     debug?.toggle();

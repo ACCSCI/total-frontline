@@ -2,9 +2,9 @@
 /* =========================================================================
    11. PLAYER + GAME STATE
    ========================================================================= */
-const STAND_H = 1.72,
-  CROUCH_H = 1.08,
-  P_RADIUS = 0.36;
+const STAND_H = SHARED_MOVEMENT.stance.standHeight,
+  CROUCH_H = SHARED_MOVEMENT.stance.crouchHeight,
+  P_RADIUS = SHARED_MOVEMENT.stance.radius;
 const SPAWN = { x: 0, z: 24 };
 const GRACE_TIME = 3.0;
 const player: any = {

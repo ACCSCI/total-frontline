@@ -1,7 +1,7 @@
 'use strict';
 /* Shared stance tuning keeps the ballistic cone, recoil and HUD in agreement. */
-const PRONE_H = 0.58;
-const PRONE_SPEED = 1.15;
+const PRONE_H = SHARED_MOVEMENT.stance.proneHeight;
+const PRONE_SPEED = SHARED_MOVEMENT.speeds.prone;
 
 function stanceSpreadMultiplier(w) {
   if (player.prone) return Math.max(0.28, (w.crouchMult || 0.7) * 0.55);
