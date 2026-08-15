@@ -10,7 +10,7 @@ const ACCEL = SHARED_MOVEMENT.physics.acceleration,
   FRICTION = SHARED_MOVEMENT.physics.friction,
   GRAVITY = SHARED_MOVEMENT.physics.gravity,
   JUMP_V = SHARED_MOVEMENT.physics.jumpVelocity;
-const DOUBLE_JUMP_V = 6.05; // second hop, slightly weaker than the first
+const DOUBLE_JUMP_V = SHARED_MOVEMENT.physics.doubleJumpVelocity; // second hop, slightly weaker than the first
 const BREATH_TIME = 3.0; // seconds of steady hold per breath
 /* a ledge this far above the feet can still be pulled up onto */
 const MANTLE_RISE = 1.95,

@@ -22,8 +22,10 @@ function CYLZ(rt: number, rb: number, h: number, seg: number) {
 function part(parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
-  m.castShadow = true;
-  m.receiveShadow = true;
+  /* Night forest enemies stay out of the shadow pass: thirty soldiers times
+     thirty meshes would otherwise dominate the frame budget. */
+  m.castShadow = false;
+  m.receiveShadow = false;
   parent.add(m);
   return m;
 }
@@ -104,17 +106,21 @@ export function buildSoldierModel(): SoldierRig {
   const INVIS = new THREE.MeshBasicMaterial({ visible: false });
 
   const model = new THREE.Group();
+  model.name = 'soldierModel';
   const body = new THREE.Group();
+  body.name = 'soldierBody';
   model.add(body);
 
   const legs: Array<{ hip: THREE.Group; knee: THREE.Group }> = [];
   for (const s of [-1, 1]) {
     const hip = new THREE.Group();
+    hip.name = s < 0 ? 'hipL' : 'hipR';
     hip.position.set(s * 0.135, 0.9, 0);
     body.add(hip);
     part(hip, B(0.185, 0.46, 0.2), MAT.cloth, 0, -0.23, 0);
     part(hip, B(0.155, 0.115, 0.055), MAT.vest, 0, -0.4, -0.106);
     const knee = new THREE.Group();
+    knee.name = s < 0 ? 'kneeL' : 'kneeR';
     knee.position.set(0, -0.46, 0);
     hip.add(knee);
     part(knee, B(0.165, 0.44, 0.185), MAT.cloth, 0, -0.22, 0);
@@ -140,6 +146,7 @@ export function buildSoldierModel(): SoldierRig {
 
   part(body, CYL(0.062, 0.062, 0.1, 8), MAT.skin, 0, 1.53, 0);
   const head = new THREE.Group();
+  head.name = 'soldierHead';
   head.position.set(0, 1.655, 0);
   body.add(head);
   part(head, new THREE.SphereGeometry(0.135, 14, 12), MAT.skin, 0, 0, 0);
@@ -154,11 +161,13 @@ export function buildSoldierModel(): SoldierRig {
   part(head, B(0.055, 0.045, 0.045), MAT.helm, 0, 0.075, -0.1);
 
   const rig = new THREE.Group();
+  rig.name = 'soldierRig';
   rig.position.set(0, 1.4, 0);
   body.add(rig);
   const arms: Array<{ sh: THREE.Group; el: THREE.Group }> = [];
   for (const s of [-1, 1]) {
     const sh = new THREE.Group();
+    sh.name = s < 0 ? 'shoulderL' : 'shoulderR';
     sh.position.set(s * 0.275, 0.02, 0);
     rig.add(sh);
     part(sh, B(0.15, 0.135, 0.165), MAT.vest, 0, -0.035, 0);
@@ -166,6 +175,7 @@ export function buildSoldierModel(): SoldierRig {
     part(sh, B(0.135, 0.34, 0.145), MAT.cloth, 0, -0.17, 0);
     part(sh, B(0.14, 0.075, 0.15), MAT.vest, 0, -0.3, 0);
     const el = new THREE.Group();
+    el.name = s < 0 ? 'elbowL' : 'elbowR';
     el.position.set(0, -0.34, 0);
     sh.add(el);
     part(el, B(0.115, 0.3, 0.125), MAT.cloth, 0, -0.15, 0);
@@ -174,6 +184,7 @@ export function buildSoldierModel(): SoldierRig {
   }
 
   const gun = new THREE.Group();
+  gun.name = 'soldierGun';
   rig.add(gun);
   part(gun, B(0.065, 0.085, 0.34), MAT.gun, 0, 0, -0.1);
   part(gun, CYLZ(0.016, 0.016, 0.32, 8), MAT.gun, 0, 0.006, -0.4);
@@ -181,18 +192,43 @@ export function buildSoldierModel(): SoldierRig {
   part(gun, B(0.05, 0.1, 0.06), MAT.gun, 0, -0.075, 0.05);
   part(gun, B(0.055, 0.075, 0.16), MAT.gun, 0, -0.005, 0.16);
   const gunMuzzle = new THREE.Object3D();
+  gunMuzzle.name = 'soldierGunMuzzle';
   gunMuzzle.position.set(0, 0.006, -0.56);
   gun.add(gunMuzzle);
 
   const hbHead = new THREE.Mesh(B(0.33, 0.34, 0.33), INVIS);
+  hbHead.name = 'hbHead';
   hbHead.position.set(0, 1.66, 0);
   body.add(hbHead);
   const hbBody = new THREE.Mesh(B(0.62, 0.62, 0.42), INVIS);
+  hbBody.name = 'hbBody';
   hbBody.position.set(0, 1.2, 0);
   body.add(hbBody);
   const hbLegs = new THREE.Mesh(B(0.55, 0.92, 0.36), INVIS);
+  hbLegs.name = 'hbLegs';
   hbLegs.position.set(0, 0.46, 0);
   body.add(hbLegs);
 
+  return { model, body, legs, arms, rig, gun, gunMuzzle, head, hbHead, hbBody, hbLegs };
+}
+
+export function cloneSoldierRig(template: SoldierRig): SoldierRig {
+  const model = template.model.clone(true);
+  const body = model.getObjectByName('soldierBody') as THREE.Group;
+  const head = model.getObjectByName('soldierHead') as THREE.Group;
+  const rig = model.getObjectByName('soldierRig') as THREE.Group;
+  const gun = model.getObjectByName('soldierGun') as THREE.Group;
+  const gunMuzzle = model.getObjectByName('soldierGunMuzzle') as THREE.Object3D;
+  const hbHead = model.getObjectByName('hbHead') as THREE.Mesh;
+  const hbBody = model.getObjectByName('hbBody') as THREE.Mesh;
+  const hbLegs = model.getObjectByName('hbLegs') as THREE.Mesh;
+  const legs = (['hipL', 'hipR'] as const).map((name, li) => ({
+    hip: model.getObjectByName(name) as THREE.Group,
+    knee: model.getObjectByName(li === 0 ? 'kneeL' : 'kneeR') as THREE.Group,
+  }));
+  const arms = (['shoulderL', 'shoulderR'] as const).map((name, li) => ({
+    sh: model.getObjectByName(name) as THREE.Group,
+    el: model.getObjectByName(li === 0 ? 'elbowL' : 'elbowR') as THREE.Group,
+  }));
   return { model, body, legs, arms, rig, gun, gunMuzzle, head, hbHead, hbBody, hbLegs };
 }

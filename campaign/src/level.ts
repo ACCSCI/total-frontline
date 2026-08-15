@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
+import missionsData from '../../shared/missions.json';
+import audioData from '../../shared/audio-params.json';
+import { buildHorizonBackdrop } from './backdrop';
+import { hash2, noise2, snapObjectToTerrain, terrainHeight, windAt } from './terrain';
 
 /* ---------------------------------------------------------------------------
    P0 graybox map: a brand-new linear forest valley, not a reuse of any
@@ -39,96 +43,6 @@ export interface P0Level {
   resnapProps(): number;
   addObstacle(x: number, z: number, r: number): void;
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
-}
-
-function hash2(x: number, z: number): number {
-  const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
-  return s - Math.floor(s);
-}
-
-function noise2(x: number, z: number): number {
-  const ix = Math.floor(x);
-  const iz = Math.floor(z);
-  const fx = x - ix;
-  const fz = z - iz;
-  const ux = fx * fx * (3 - 2 * fx);
-  const uz = fz * fz * (3 - 2 * fz);
-  const a = hash2(ix, iz);
-  const b = hash2(ix + 1, iz);
-  const c = hash2(ix, iz + 1);
-  const d = hash2(ix + 1, iz + 1);
-  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
-}
-
-export function terrainHeight(x: number, z: number): number {
-  /* Wide, gently rising forest floor. Near the playable corridor the ground
-     stays almost flat; beyond it the valley climbs smoothly into mountains.
-     Once |z| leaves the mission area, large rolling hills begin so the far
-     ground is never a flat sheet with an obvious edge. */
-  const side = Math.max(0, Math.abs(x) - 8) / 42;
-  const rise = Math.pow(side, 2.1) * 22;
-  const wave = Math.sin(z * 0.08) * 0.35 + Math.cos(x * 0.22 + z * 0.05) * 0.28;
-  const fine = noise2(x * 0.13, z * 0.17) * 0.75 - 0.25;
-  const far = Math.min(1, Math.max(0, Math.abs(z) - 100) / 240);
-  const rolling =
-    (Math.sin(z * 0.019) * 5.2 +
-      Math.sin(z * 0.047 + 1.7) * 2.8 +
-      (noise2(x * 0.006, z * 0.007) - 0.5) * 7.5) *
-    far;
-  return rise + wave + fine + rolling;
-}
-
-/* ---------------------------------------------------------------------------
-   Ground snapping: place an object by sampling terrain under its footprint
-   and using the LOWEST sampled ground height as support. That makes uneven
-   ground sink the object slightly instead of leaving it floating. This is the
-   foundation of the one-key "snap to ground" map-authoring tool.
-   ------------------------------------------------------------------------- */
-export interface SnapOptions {
-  points?: Array<[number, number]>;
-  sink?: number;
-  groundAt?: (x: number, z: number) => number;
-  mode?: 'min' | 'center' | 'median' | 'max';
-}
-
-export function snapObjectToTerrain(object: THREE.Object3D, x: number, z: number, options: SnapOptions = {}) {
-  object.position.set(x, 0, z);
-  object.updateWorldMatrix(true, true);
-  const box = new THREE.Box3().setFromObject(object);
-  const localBottom = box.min.y;
-  const groundAt = options.groundAt || terrainHeight;
-  const mode = options.mode || 'min';
-  let support: number;
-  if (mode === 'center') {
-    support = groundAt(x, z);
-  } else {
-    const points = options.points && options.points.length ? options.points : [[x, z]];
-    const heights = points.map(([px, pz]) => groundAt(px, pz));
-    if (mode === 'max') {
-      support = Math.max(...heights);
-    } else if (mode === 'median') {
-      const sorted = [...heights].sort((a, b) => a - b);
-      support = sorted[Math.floor(sorted.length / 2)];
-    } else {
-      support = Math.min(...heights);
-    }
-  }
-  object.position.y = support - localBottom - (options.sink ?? 0.04);
-}
-
-/** Lowest terrain sample under a small circular footprint. */
-export function supportHeightAt(x: number, z: number, radius = 0.4): number {
-  let support = terrainHeight(x, z);
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    support = Math.min(support, terrainHeight(x + Math.cos(a) * radius, z + Math.sin(a) * radius));
-  }
-  return support;
-}
-
-/** Shared wind model: visible rain tilt, screen droplets and audio all use it. */
-export function windAt(time: number): number {
-  return Math.sin(time * 0.53) * 1.25 + Math.sin(time * 0.19 + 1.4) * 0.75 + Math.sin(time * 1.31) * 0.22;
 }
 
 function makeTerrainMaterial(colorA: THREE.ColorRepresentation, colorB: THREE.ColorRepresentation) {
@@ -243,63 +157,6 @@ function makeRainTexture(slant: number): THREE.CanvasTexture {
    (48 segments) and generated entirely in code — no image files. `fog:false`
    keeps it visible beyond the fog wall, exactly like a real distant range.
    ------------------------------------------------------------------------- */
-function buildHorizonBackdrop(scene: THREE.Scene) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 2048;
-  canvas.height = 512;
-  const g = canvas.getContext('2d');
-  if (!g) return;
-
-  /* canvas y=0 maps to the cylinder's bottom (world y=-80), y=146 to the
-     horizon (world y≈0), y=512 to the sky. */
-  const sky = g.createLinearGradient(0, 0, 0, 512);
-  sky.addColorStop(0, '#05080d');
-  sky.addColorStop(0.18, '#080e16');
-  sky.addColorStop(0.285, '#0b141f');
-  sky.addColorStop(0.44, '#08101a');
-  sky.addColorStop(0.7, '#04080f');
-  sky.addColorStop(1, '#010204');
-  g.fillStyle = sky;
-  g.fillRect(0, 0, 2048, 512);
-
-  const ridge = (baseY: number, amp: number, color: string) => {
-    g.fillStyle = color;
-    g.beginPath();
-    g.moveTo(0, baseY);
-    for (let x = 0; x <= 2048; x += 32) {
-      const t = x / 2048;
-      const y =
-        baseY -
-        amp * (0.52 + 0.48 * Math.sin(t * Math.PI * 2 * 3 + 1.4)) -
-        amp * 0.3 * Math.sin(t * Math.PI * 2 * 17 + 4.2);
-      g.lineTo(x, Math.max(14, y));
-    }
-    g.lineTo(2048, baseY);
-    g.closePath();
-    g.fill();
-  };
-
-  /* three silhouette ranges, farthest and lightest first */
-  ridge(146, 40, 'rgba(14,22,32,0.45)');
-  ridge(146, 74, 'rgba(9,15,23,0.68)');
-  ridge(146, 108, 'rgba(5,8,13,0.9)');
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const geometry = new THREE.CylinderGeometry(900, 900, 280, 48, 1, true);
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    side: THREE.BackSide,
-    fog: false,
-    depthWrite: false,
-  });
-  const backdrop = new THREE.Mesh(geometry, material);
-  backdrop.name = 'P0_HORIZON_BACKDROP';
-  backdrop.position.y = 60;
-  backdrop.renderOrder = -10;
-  backdrop.frustumCulled = false;
-  scene.add(backdrop);
-}
 
 export function buildP0Level(scene: THREE.Scene): P0Level {
   const group = new THREE.Group();
@@ -520,11 +377,7 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
 
   /* Objective beacons are now screen-space projections owned by the HUD.
      They have no 3D mesh and no collision, so terrain can never occlude them. */
-  const objectives: LevelObjective[] = [
-    { id: 'o1', label: '抵达林间旧伐木道', doneLabel: '已通过旧伐木道', z: 44, trigger: 46 },
-    { id: 'o2', label: '穿过泥泞浅滩', doneLabel: '已穿过浅滩', z: 4, trigger: 6 },
-    { id: 'o3', label: '抵达公路桥接应点', doneLabel: '已抵达接应点', z: -78, trigger: -72 },
-  ];
+  const objectives: LevelObjective[] = missionsData.mission01.objectives as LevelObjective[];
   const gateGroups = new Map<string, THREE.Group>();
   for (const obj of objectives) gateGroups.set(obj.id, new THREE.Group());
 
@@ -622,12 +475,7 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
 
   /* --- rain: layered soft sprite streaks pooled around the camera --- */
   const rainTextures = [-2, -1, 0, 1, 2].map(makeRainTexture);
-  const rainLayerDefs = [
-    { count: 300, size: 3.4, opacity: 0.9, minSpeed: 40, maxSpeed: 60, spread: 10 },
-    { count: 620, size: 2.2, opacity: 0.7, minSpeed: 32, maxSpeed: 46, spread: 14 },
-    { count: 1100, size: 1.3, opacity: 0.5, minSpeed: 24, maxSpeed: 36, spread: 20 },
-    { count: 1500, size: 0.75, opacity: 0.3, minSpeed: 16, maxSpeed: 26, spread: 28 },
-  ];
+  const rainLayerDefs = audioData.environment.rainLayers;
   const rainCam = new THREE.Vector3(0, 2, 82);
   const rainLayers = rainLayerDefs.map((def) => {
     const geo = new THREE.BufferGeometry();

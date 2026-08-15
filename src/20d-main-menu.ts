@@ -39,6 +39,12 @@ document.querySelectorAll<HTMLElement>('.menuBack').forEach((button) => {
     showMainMenuPage();
   });
 });
+/* The campaign is the WebGPU Vite entry built next to the legacy bundle. One
+   main menu owns both modes, so the deathmatch build is the shared front door. */
+document.getElementById('campaignLaunch')?.addEventListener('click', () => {
+  SFX.init();
+  location.href = 'campaign/';
+});
 addEventListener('keydown', (event) => {
   if (event.code !== 'Escape' || !activeMenuPage || G.started) return;
   event.preventDefault();

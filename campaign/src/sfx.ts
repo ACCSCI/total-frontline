@@ -332,8 +332,16 @@ const SFX = (() => {
     toneBurst({ f0: 2200, f1: 900, gain: 0.07, dur: 0.45, type: 'sine', delay: 0.02 });
   }
 
-  function gunshot() {
-    noiseBurst({ type: 'lowpass', freq: 1050, sweep: 240, gain: 0.42, dur: 0.16, atk: 0.002 });
+  function gunshot(weaponId = 'm4') {
+    const prof = {
+      m4: { freq: 1050, sweep: 240, gain: 0.42 },
+      ks12: { freq: 520, sweep: 130, gain: 0.6 },
+      sr7: { freq: 820, sweep: 190, gain: 0.52 },
+      ak12: { freq: 980, sweep: 220, gain: 0.44 },
+      p90: { freq: 1250, sweep: 300, gain: 0.34 },
+      p9: { freq: 1150, sweep: 260, gain: 0.3 },
+    }[weaponId] || { freq: 1050, sweep: 240, gain: 0.42 };
+    noiseBurst({ type: 'lowpass', freq: prof.freq, sweep: prof.sweep, gain: prof.gain, dur: 0.16, atk: 0.002 });
     toneBurst({ f0: 190, f1: 72, gain: 0.16, dur: 0.12, type: 'sine' });
     noiseBurst({ type: 'highpass', freq: 2600, gain: 0.13, dur: 0.05, atk: 0.0008, delay: 0.012 });
   }
@@ -341,6 +349,27 @@ const SFX = (() => {
   function enemyShot() {
     noiseBurst({ type: 'lowpass', freq: 900, sweep: 180, gain: 0.24, dur: 0.18, atk: 0.002 });
     toneBurst({ f0: 150, f1: 58, gain: 0.1, dur: 0.14, type: 'sine' });
+  }
+
+  function enemyDown() {
+    toneBurst({ f0: 210, f1: 58, gain: 0.14, dur: 0.34, type: 'sine' });
+    noiseBurst({ type: 'lowpass', freq: 620, sweep: 120, gain: 0.16, dur: 0.3, atk: 0.004 });
+  }
+
+  function jump() {
+    noiseBurst({ type: 'lowpass', freq: 420, sweep: 190, gain: 0.09, dur: 0.09, atk: 0.001 });
+    toneBurst({ f0: 240, f1: 120, gain: 0.04, dur: 0.08, type: 'sine' });
+  }
+
+  function reload() {
+    noiseBurst({ type: 'bandpass', freq: 520, sweep: 260, gain: 0.14, dur: 0.09, atk: 0.001 });
+    noiseBurst({ type: 'highpass', freq: 2100, gain: 0.08, dur: 0.05, atk: 0.001, delay: 0.14 });
+    noiseBurst({ type: 'bandpass', freq: 900, gain: 0.11, dur: 0.07, atk: 0.001, delay: 0.32 });
+  }
+
+  function weaponSwap() {
+    noiseBurst({ type: 'bandpass', freq: 760, gain: 0.1, dur: 0.06, atk: 0.001 });
+    noiseBurst({ type: 'bandpass', freq: 1180, gain: 0.08, dur: 0.05, atk: 0.001, delay: 0.09 });
   }
 
   function update(dt: number) {
@@ -374,7 +403,23 @@ const SFX = (() => {
     }
   }
 
-  return { init, update, thunder, footstep, typeKey, lineConfirm, revealHit, explosion, flashbang, gunshot, enemyShot };
+  return {
+    init,
+    update,
+    thunder,
+    footstep,
+    typeKey,
+    lineConfirm,
+    revealHit,
+    explosion,
+    flashbang,
+    gunshot,
+    enemyShot,
+    enemyDown,
+    jump,
+    reload,
+    weaponSwap,
+  };
 })();
 
 export { SFX };

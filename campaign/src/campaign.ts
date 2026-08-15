@@ -1,11 +1,8 @@
 import * as THREE from 'three';
-import type { P0Level } from './level';
-import type { FirstPersonPlayer } from './player';
-import { buildSoldierModel, type SoldierRig } from './soldier';
+import type { SoldierRig } from './soldier';
 import { SFX } from './sfx';
 import weaponsData from '../../shared/weapons.json';
 import loadoutData from '../../shared/loadout.json';
-import missionsData from '../../shared/missions.json';
 
 export interface WeaponDef {
   id: string;
@@ -14,9 +11,14 @@ export interface WeaponDef {
   reserve: number;
   maxReserve: number;
   damage: number;
+  baseDamage: number;
   pellets: number;
   rpm: number;
   auto: boolean;
+  adsFov: number;
+  adsTime: number;
+  reloadTime: number;
+  spreadBase: number;
 }
 
 const rawWeapons = weaponsData.weapons as Record<
@@ -32,6 +34,10 @@ const rawWeapons = weaponsData.weapons as Record<
     rpm: number;
     auto: boolean;
     campaignReserve?: number;
+    adsFov?: number;
+    adsTime?: number;
+    reloadTime?: number;
+    spreadBase?: number;
   }
 >;
 
@@ -44,9 +50,14 @@ for (const [id, w] of Object.entries(rawWeapons)) {
     reserve: w.campaignReserve ?? w.reserve,
     maxReserve: w.maxReserve,
     damage: w.damage * w.pellets,
+    baseDamage: w.damage,
     pellets: w.pellets,
     rpm: w.rpm,
     auto: w.auto,
+    adsFov: w.adsFov ?? 50,
+    adsTime: w.adsTime ?? 0.2,
+    reloadTime: w.reloadTime ?? 1.3,
+    spreadBase: w.spreadBase ?? 0.0018,
   };
 }
 
@@ -56,7 +67,7 @@ interface CarriedWeapon {
   reserve: number;
 }
 
-interface Pickup {
+export interface Pickup {
   root: THREE.Group;
   kind: 'weapon' | 'ammo' | 'lootWeapon';
   weaponId?: string;
@@ -65,7 +76,7 @@ interface Pickup {
   bobT: number;
 }
 
-interface Enemy {
+export interface Enemy {
   root: THREE.Group;
   alive: boolean;
   health: number;
@@ -75,9 +86,14 @@ interface Enemy {
   patrolT: number;
   fireT: number;
   soldier: SoldierRig;
+  strafeDir: number;
+  engaged: boolean;
+  reactionT: number;
+  hitFlash: number;
+  deathT: number;
 }
 
-interface ThrowableProjectile {
+export interface ThrowableProjectile {
   mesh: THREE.Mesh;
   velocity: THREE.Vector3;
   kind: 'lethal' | 'tactical';
@@ -91,6 +107,13 @@ export class CampaignRules {
   tacticals = loadoutData.campaign.throwables.tactical.start;
   lethals = loadoutData.campaign.throwables.lethal.start;
   readonly maxThrowables = loadoutData.campaign.throwables.lethal.max;
+  reloadT = 0;
+  reloadDuration = 0;
+  switchT = 0;
+  switchTo = -1;
+  ads = false;
+  adsEase = 0;
+  fireT = 0;
 
   constructor() {
     const m4 = PRIMARY_WEAPONS.m4;
@@ -105,12 +128,54 @@ export class CampaignRules {
     return this.primary;
   }
 
+  get switching(): boolean {
+    return this.switchT > 0;
+  }
+
+  get reloading(): boolean {
+    return this.reloadT > 0;
+  }
+
+  get canFire(): boolean {
+    const w = this.activeWeapon;
+    return !!w && w.mag > 0 && this.fireT <= 0 && this.reloadT <= 0 && this.switchT <= 0;
+  }
+
+  update(dt: number) {
+    this.fireT = Math.max(0, this.fireT - dt);
+    if (this.reloadT > 0) {
+      this.reloadT -= dt;
+      if (this.reloadT <= 0) {
+        this.reloadT = 0;
+        this.applyReload();
+      }
+    }
+    if (this.switchT > 0) {
+      this.switchT -= dt;
+      if (this.switchT <= 0 && this.switchTo >= 0) {
+        this.activeSlot = this.switchTo;
+        this.switchTo = -1;
+        this.updateHud();
+        SFX.weaponSwap();
+      }
+    }
+    const aimWant = this.ads && !this.reloading && !this.switching;
+    const aimSpeed = 1 / (this.activeWeapon?.def.adsTime || 0.2);
+    this.adsEase = THREE.MathUtils.clamp(
+      this.adsEase + (aimWant ? aimSpeed : -aimSpeed) * dt,
+      0,
+      1
+    );
+  }
+
   switchSlot(index: number) {
-    if (index === this.activeSlot || !this.slots[index]) {
+    if (index === this.activeSlot || !this.slots[index] || this.switching || this.reloading) {
       this.updateHud();
       return;
     }
-    this.activeSlot = index;
+    this.switchTo = index;
+    this.switchT = 0.28;
+    this.ads = false;
     this.updateHud();
   }
 
@@ -119,27 +184,46 @@ export class CampaignRules {
     if (!def) return null;
     const old = this.slots[this.activeSlot]?.def || null;
     this.slots[this.activeSlot] = { def, mag: def.magSize, reserve: def.reserve };
+    this.reloadT = 0;
+    this.reloadDuration = 0;
+    this.fireT = Math.max(this.fireT, 0.35);
     this.updateHud();
     return old;
   }
 
   shoot(): boolean {
+    if (!this.canFire) return false;
     const w = this.activeWeapon;
-    if (!w || w.mag <= 0) return false;
+    if (!w) return false;
     w.mag--;
+    this.fireT = 60 / w.def.rpm;
     this.updateHud();
     if (w.mag === 0 && w.reserve <= 0) SFX.lineConfirm();
     return true;
   }
 
-  reload() {
+  startReload() {
     const w = this.activeWeapon;
-    if (!w || w.mag === w.def.magSize || w.reserve <= 0) return;
+    if (!w || w.mag === w.def.magSize || w.reserve <= 0 || this.reloading || this.switching) return;
+    this.reloadDuration = w.def.reloadTime;
+    this.reloadT = this.reloadDuration;
+    this.ads = false;
+    this.updateHud();
+    SFX.reload();
+  }
+
+  private applyReload() {
+    const w = this.activeWeapon;
+    if (!w) return;
     const need = w.def.magSize - w.mag;
     const take = Math.min(need, w.reserve);
     w.mag += take;
     w.reserve -= take;
     this.updateHud();
+  }
+
+  toggleAim() {
+    this.ads = !this.ads;
   }
 
   addAmmo(amount: number, throwables = true) {
@@ -180,7 +264,10 @@ export class CampaignRules {
     }
     const w = this.activeWeapon;
     const ammo = document.getElementById('p0Ammo') as HTMLDivElement;
-    if (ammo) ammo.textContent = w ? `${w.mag} / ${w.reserve}` : '— / —';
+    if (ammo) {
+      if (this.reloading) ammo.textContent = '换弹中…';
+      else ammo.textContent = w ? `${w.mag} / ${w.reserve}` : '— / —';
+    }
     const tac = document.getElementById('p0Tac') as HTMLDivElement;
     const lethal = document.getElementById('p0Lethal') as HTMLDivElement;
     if (tac) {
@@ -190,310 +277,6 @@ export class CampaignRules {
     if (lethal) {
       lethal.textContent = `G 手雷 ×${this.lethals}`;
       lethal.classList.toggle('empty', this.lethals === 0);
-    }
-  }
-}
-
-function makePickupRoot(color: number, label: string): THREE.Group {
-  const root = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.55, 0.18, 0.18),
-    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.65, roughness: 0.5 })
-  );
-  body.position.y = 0.18;
-  body.castShadow = true;
-  body.userData.debugKind = 'pickup';
-  root.add(body);
-  const tip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.08, 0.34, 0.08),
-    new THREE.MeshStandardMaterial({ color: 0x1b1d1c, roughness: 0.7 })
-  );
-  tip.position.y = 0.32;
-  tip.userData.debugKind = 'pickup';
-  root.add(tip);
-  root.userData.debugKind = 'pickup';
-  root.userData.pickupLabel = label;
-  return root;
-}
-
-export class P0Combat {
-  private scene: THREE.Scene;
-  private level: P0Level;
-  private player: FirstPersonPlayer;
-  rules: CampaignRules;
-  pickups: Pickup[] = [];
-  enemies: Enemy[] = [];
-  throwables: ThrowableProjectile[] = [];
-  private raycaster = new THREE.Raycaster();
-  private flashUntil = -1;
-  private flashEl = document.getElementById('p0Flash') as HTMLDivElement;
-  private damageEl = document.getElementById('p0Damage') as HTMLDivElement;
-  private hitEl = document.getElementById('p0Hitmark') as HTMLDivElement;
-  private pickupPrompt = document.getElementById('p0PickupPrompt') as HTMLDivElement;
-  private playerFireT = 0;
-
-  constructor(scene: THREE.Scene, level: P0Level, rules: CampaignRules, player: FirstPersonPlayer) {
-    this.scene = scene;
-    this.level = level;
-    this.rules = rules;
-    this.player = player;
-    this.spawnPickups();
-    this.spawnEnemies();
-    rules.updateHud();
-  }
-
-  private spawnPickups() {
-    for (const p of missionsData.mission01.weaponPickups) {
-      this.addPickup('weapon', p.weapon, new THREE.Vector3(p.x, 0, p.z));
-    }
-    for (const p of missionsData.mission01.ammoPickups) {
-      this.addPickup('ammo', undefined, new THREE.Vector3(p.x, 0, p.z), '弹药补给');
-    }
-  }
-
-  private addPickup(kind: Pickup['kind'], weaponId: string | undefined, pos: THREE.Vector3, labelOverride?: string) {
-    const def = weaponId ? PRIMARY_WEAPONS[weaponId] : null;
-    const label = labelOverride || (def ? `${def.name} — F 替换` : '弹药补给');
-    const color = kind === 'ammo' ? 0x7f9a6a : 0xc88a3a;
-    const root = makePickupRoot(color, label);
-    root.position.set(pos.x, this.level.groundY(pos.x, pos.z) + 0.02, pos.z);
-    root.userData.debugKind = 'pickup';
-    this.scene.add(root);
-    this.pickups.push({ root, kind, weaponId, label, coolUntil: -1, bobT: Math.random() * Math.PI * 2 });
-  }
-
-  private spawnEnemies() {
-    const positions = missionsData.mission01.enemyPositions.map((p) => new THREE.Vector3(p.x, 0, p.z));
-    for (const pos of positions) {
-      const root = new THREE.Group();
-      const soldier = buildSoldierModel();
-      root.add(soldier.model);
-      root.position.set(pos.x, this.level.groundY(pos.x, pos.z) + 0.02, pos.z);
-      root.userData.enemyRoot = root;
-      root.userData.debugKind = 'enemy';
-      this.scene.add(root);
-      this.enemies.push({
-        root,
-        alive: true,
-        health: 100,
-        phase: Math.random() * Math.PI * 2,
-        baseX: pos.x,
-        baseZ: pos.z,
-        patrolT: Math.random() * Math.PI * 2,
-        fireT: 1 + Math.random() * 2,
-        soldier,
-      });
-    }
-  }
-
-  nearestWeaponPickup(pos: THREE.Vector3): Pickup | null {
-    let best: Pickup | null = null;
-    let bestD = 2.4;
-    for (const p of this.pickups) {
-      if (p.kind === 'ammo' || p.coolUntil > performance.now()) continue;
-      const d = Math.hypot(p.root.position.x - pos.x, p.root.position.z - pos.z);
-      if (d < bestD) {
-        bestD = d;
-        best = p;
-      }
-    }
-    return best;
-  }
-
-  tryInteractWeapon(pos: THREE.Vector3) {
-    const p = this.nearestWeaponPickup(pos);
-    if (!p || !p.weaponId) return false;
-    const old = this.rules.pickupWeapon(p.weaponId);
-    if (old) {
-      p.weaponId = old.id;
-      p.label = `${old.name} — F 替换`;
-    } else {
-      p.root.visible = false;
-      p.coolUntil = performance.now() + 999999;
-    }
-    return true;
-  }
-
-  shoot(camera: THREE.PerspectiveCamera): boolean {
-    if (!this.rules.shoot()) return false;
-    SFX.gunshot();
-    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-    this.raycaster.far = 200;
-    const objects: THREE.Object3D[] = [];
-    for (const e of this.enemies) if (e.alive) objects.push(e.root);
-    const hits = this.raycaster.intersectObjects(objects, true);
-    if (hits.length) {
-      let node: THREE.Object3D | null = hits[0].object;
-      while (node && !node.userData.enemyRoot) node = node.parent;
-      const enemy = node ? this.enemies.find((e) => e.root === node) : null;
-      if (enemy && enemy.alive) {
-        enemy.health -= this.rules.activeWeapon?.def.damage || 25;
-        if (this.hitEl) {
-          this.hitEl.classList.add('on');
-          setTimeout(() => this.hitEl.classList.remove('on'), 90);
-        }
-        if (enemy.health <= 0) this.killEnemy(enemy);
-      }
-    }
-    return true;
-  }
-
-  private killEnemy(enemy: Enemy) {
-    enemy.alive = false;
-    enemy.root.visible = false;
-    const x = enemy.root.position.x;
-    const z = enemy.root.position.z;
-    const y = this.level.groundY(x, z);
-    /* ammo drop is picked up automatically; weapon drop is swappable with F */
-    this.addPickup('ammo', undefined, new THREE.Vector3(x, 0, z), '敌人弹药');
-    if (Math.random() < loadoutData.campaign.enemyDrop.weaponChance) {
-      const pool = loadoutData.campaign.enemyDrop.weaponPool;
-      const id = pool[Math.floor(Math.random() * pool.length)];
-      this.addPickup('lootWeapon', id, new THREE.Vector3(x + 0.8, 0, z), `${PRIMARY_WEAPONS[id].name} — F 拾取`);
-    }
-    void y;
-    SFX.thunder(0.35);
-  }
-
-  throwGrenade(kind: 'lethal' | 'tactical', camera: THREE.PerspectiveCamera): boolean {
-    if (!this.rules.useThrowable(kind)) return false;
-    const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    const origin = camera.position.clone().add(dir.clone().multiplyScalar(0.7)).add(new THREE.Vector3(0, -0.2, 0));
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.08, 10, 8),
-      new THREE.MeshStandardMaterial({ color: kind === 'lethal' ? 0x2b3320 : 0xb9c6d0, emissive: kind === 'lethal' ? 0x5a1f10 : 0x8096a4, emissiveIntensity: 0.8 })
-    );
-    mesh.position.copy(origin);
-    mesh.userData.debugKind = 'throwable';
-    this.scene.add(mesh);
-    const vel = dir.multiplyScalar(13).add(new THREE.Vector3(0, 5.5, 0));
-    this.throwables.push({ mesh, velocity: vel, kind, life: 4 });
-    return true;
-  }
-
-  private detonate(t: ThrowableProjectile) {
-    const pos = t.mesh.position;
-    this.scene.remove(t.mesh);
-    if (t.kind === 'lethal') {
-      SFX.explosion();
-      const flash = new THREE.PointLight(0xffb45a, 26, 16);
-      flash.position.copy(pos);
-      this.scene.add(flash);
-      setTimeout(() => this.scene.remove(flash), 240);
-      const boom = new THREE.Mesh(
-        new THREE.SphereGeometry(0.35, 14, 10),
-        new THREE.MeshBasicMaterial({ color: 0xff9a3a, transparent: true, opacity: 0.85, depthWrite: false })
-      );
-      boom.position.copy(pos);
-      boom.userData.debugKind = 'fx';
-      this.scene.add(boom);
-      const start = performance.now();
-      const tick = () => {
-        const k = Math.min(1, (performance.now() - start) / 420);
-        boom.scale.setScalar(0.5 + k * 8);
-        (boom.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - k);
-        if (k < 1) requestAnimationFrame(tick);
-        else this.scene.remove(boom);
-      };
-      tick();
-      for (const enemy of this.enemies) {
-        if (!enemy.alive) continue;
-        const d = Math.hypot(enemy.root.position.x - pos.x, enemy.root.position.z - pos.z);
-        if (d < 5.5) this.killEnemy(enemy);
-      }
-    } else {
-      SFX.flashbang();
-      if (this.flashEl) {
-        this.flashEl.classList.add('on');
-        setTimeout(() => this.flashEl.classList.remove('on'), 180);
-      }
-    }
-  }
-
-  update(dt: number, playerPos: THREE.Vector3, camera: THREE.PerspectiveCamera) {
-    const now = performance.now();
-    /* pickups bob and proximity logic */
-    for (const p of this.pickups) {
-      if (!p.root.visible) continue;
-      p.bobT += dt * 2.2;
-      p.root.position.y = this.level.groundY(p.root.position.x, p.root.position.z) + 0.04 + Math.sin(p.bobT) * 0.07;
-      p.root.rotation.y += dt * 0.8;
-      const d = Math.hypot(p.root.position.x - playerPos.x, p.root.position.z - playerPos.z);
-      if (p.kind === 'ammo' && d < 2.2 && p.coolUntil <= now) {
-        this.rules.addAmmo(loadoutData.campaign.ammoPickup.amount);
-        p.coolUntil = now + loadoutData.campaign.ammoPickup.cooldownMs;
-        p.root.visible = false;
-        setTimeout(() => {
-          p.root.visible = true;
-        }, loadoutData.campaign.ammoPickup.cooldownMs);
-        this.showPrompt('已拾取弹药补给 · 投掷物 +1', 1.6);
-      }
-    }
-    const wp = this.nearestWeaponPickup(playerPos);
-    this.showPrompt(wp ? wp.label : '', 0);
-    /* throwables */
-    for (let i = this.throwables.length - 1; i >= 0; i--) {
-      const t = this.throwables[i];
-      t.life -= dt;
-      t.velocity.y -= 12 * dt;
-      t.mesh.position.addScaledVector(t.velocity, dt);
-      if (t.life <= 0 || t.mesh.position.y <= this.level.groundY(t.mesh.position.x, t.mesh.position.z) + 0.06) {
-        this.throwables.splice(i, 1);
-        this.detonate(t);
-      }
-    }
-    /* simple patrol + return fire, enough to exercise the campaign rules */
-    for (const e of this.enemies) {
-      if (!e.alive) continue;
-      e.phase += dt;
-      e.patrolT += dt;
-      const px = e.baseX + Math.sin(e.patrolT * 0.55) * 2.4;
-      const pz = e.baseZ + Math.cos(e.patrolT * 0.4) * 1.8;
-      e.root.position.x = px;
-      e.root.position.z = pz;
-      e.root.position.y = this.level.groundY(px, pz) + 0.02;
-      const toPlayer = new THREE.Vector3(this.player.position.x - px, 0, this.player.position.z - pz);
-      const dist = toPlayer.length();
-      e.root.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
-      const step = Math.sin(e.phase * 2.2) * 0.5;
-      for (let li = 0; li < 2; li++) {
-        const s = li === 0 ? 1 : -1;
-        e.soldier.legs[li].hip.rotation.x = step * s;
-        e.soldier.legs[li].knee.rotation.x = Math.max(0, -step * s) * 0.7;
-        e.soldier.arms[li].sh.rotation.x = -step * s * 0.5;
-      }
-      e.fireT -= dt;
-      if (e.fireT <= 0 && dist < 26 && this.rules.playerHealth > 0) {
-        e.fireT = 1.2 + Math.random() * 1.4;
-        this.rules.playerHealth = Math.max(0, this.rules.playerHealth - 6);
-        SFX.enemyShot();
-        if (this.damageEl) {
-          this.damageEl.classList.add('on');
-          setTimeout(() => this.damageEl.classList.remove('on'), 140);
-        }
-        if (this.rules.playerHealth <= 0) {
-          this.rules.playerHealth = 100;
-          this.player.resetPose(this.level);
-          this.showPrompt('阵亡 · 已返回检查点', 1.8);
-        }
-      }
-    }
-    void camera;
-  }
-
-  private showPrompt(text: string, duration: number) {
-    if (!this.pickupPrompt) return;
-    if (!text) {
-      if (duration === 0) this.pickupPrompt.textContent = '';
-      return;
-    }
-    this.pickupPrompt.textContent = text;
-    this.pickupPrompt.hidden = false;
-    if (duration > 0) {
-      setTimeout(() => {
-        if (this.pickupPrompt.textContent === text) this.pickupPrompt.hidden = true;
-      }, duration * 1000);
     }
   }
 }

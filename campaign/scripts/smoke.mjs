@@ -15,6 +15,9 @@ const browser = await puppeteer.launch({
     '--use-angle=d3d11',
     '--no-sandbox',
     '--disable-setuid-sandbox',
+    '--disable-background-timer-throttling',
+    '--disable-renderer-backgrounding',
+    '--disable-backgrounding-occluded-windows',
     '--window-size=1280,720',
   ],
 });
@@ -31,8 +34,8 @@ page.on('console', (msg) => {
 page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
 
 const rendererParam = process.env.P0_RENDERER === 'webgl2' ? '?renderer=webgl2' : '';
-await page.goto(`http://127.0.0.1:4173/${rendererParam}`, { waitUntil: 'networkidle0', timeout: 30000 });
-await page.waitForFunction(() => !document.getElementById('loading') || document.getElementById('loading').hidden, { timeout: 30000 });
+await page.goto(`http://127.0.0.1:4173/${rendererParam}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.waitForFunction(() => !document.getElementById('loading') || document.getElementById('loading').hidden, { timeout: 60000 });
 
 /* Skip the real-time intro so the smoke test can observe player mode quickly. */
 await page.keyboard.down('Escape');
@@ -52,6 +55,7 @@ const state = await page.evaluate(() => {
     width: canvas?.width || 0,
     height: canvas?.height || 0,
     gpu: typeof navigator.gpu !== 'undefined',
+    backLink: !!document.getElementById('menuLink'),
   };
 });
 
@@ -70,11 +74,13 @@ const movement = await page.evaluate(() => {
     fov: player.camera.fov,
     onGround: player.onGround,
     jumpHeld: player.jumpHeld,
+    jumpsLeft: player.jumpsLeft,
     proneRequested: player.proneRequested,
     crouch: player.crouch,
     prone: player.prone,
     bobT: player.bobT,
     stepPhase: player.stepPhase,
+    aimEase: player.aimEase,
     input: { ...player.input },
   };
 
@@ -83,10 +89,12 @@ const movement = await page.evaluate(() => {
     player.vel.set(0, 0, 0);
     player.onGround = true;
     player.jumpHeld = false;
+    player.jumpsLeft = 1;
     player.proneRequested = false;
     player.crouch = false;
     player.prone = false;
     player.height = 1.72;
+    player.aimEase = 0;
     player.camera.fov = 75;
     player.input.forward = false;
     player.input.back = false;
@@ -113,6 +121,17 @@ const movement = await page.evaluate(() => {
   settle(120);
   const sprintSpeed = hspeed();
   const sprintFov = player.camera.fov;
+
+  reset();
+  player.input.jump = true;
+  settle(1);
+  player.input.jump = false;
+  const firstJump = !player.onGround && player.vel.y > 4;
+  settle(10);
+  player.input.jump = true;
+  settle(1);
+  player.input.jump = false;
+  const doubleJumped = !player.onGround && player.vel.y > 4.5;
 
   reset();
   player.input.forward = true;
@@ -166,17 +185,21 @@ const movement = await page.evaluate(() => {
   player.camera.fov = saved.fov;
   player.onGround = saved.onGround;
   player.jumpHeld = saved.jumpHeld;
+  player.jumpsLeft = saved.jumpsLeft;
   player.proneRequested = saved.proneRequested;
   player.crouch = saved.crouch;
   player.prone = saved.prone;
   player.bobT = saved.bobT;
   player.stepPhase = saved.stepPhase;
+  player.aimEase = saved.aimEase;
   Object.assign(player.input, saved.input);
 
   return {
     walkSpeed,
     sprintSpeed,
     sprintFov,
+    firstJump,
+    doubleJumped,
     crouchSpeed,
     crouchHeight,
     proneSpeed,
@@ -238,7 +261,69 @@ const rules = await page.evaluate(() => {
   };
 });
 
+/* Stage 5 weapon-handling acceptance: timed reload, ADS, fire cooldown and
+   the full mission objective chain all live in the campaign rule state. */
+const systems = await page.evaluate(() => {
+  const d = window.__P0_DEBUG;
+  const campaign = d.campaign;
+  const level = d.level;
+  const saved = {
+    mag: campaign.activeWeapon?.mag || 0,
+    reserve: campaign.activeWeapon?.reserve || 0,
+    ads: campaign.ads,
+    adsEase: campaign.adsEase,
+  };
+  const def = campaign.activeWeapon?.def;
+  const weaponData = !!def && def.adsFov > 0 && def.reloadTime > 0 && def.spreadBase > 0;
+
+  campaign.shoot();
+  const fireCooldown = campaign.fireT > 0;
+
+  campaign.toggleAim();
+  for (let i = 0; i < 20; i++) campaign.update(1 / 60);
+  const adsEase = campaign.adsEase;
+  campaign.toggleAim();
+  for (let i = 0; i < 30; i++) campaign.update(1 / 60);
+  const adsReleased = campaign.adsEase < 0.3;
+
+  const w = campaign.activeWeapon;
+  if (w) {
+    w.mag = Math.min(w.mag, w.def.magSize - 3);
+    w.reserve = Math.max(w.reserve, 3);
+  }
+  campaign.startReload();
+  const reloadStarted = campaign.reloading;
+  campaign.reloadT = 0.04;
+  campaign.update(0.1);
+  const reloadFinished = !campaign.reloading;
+  const reloadFilled = !!w && w.mag === w.def.magSize;
+
+  if (w) {
+    w.mag = saved.mag;
+    w.reserve = saved.reserve;
+  }
+  campaign.ads = saved.ads;
+  campaign.adsEase = saved.adsEase;
+  campaign.reloadT = 0;
+  campaign.updateHud();
+
+  return {
+    weaponData,
+    fireCooldown,
+    adsEase,
+    adsReleased,
+    reloadStarted,
+    reloadFinished,
+    reloadFilled,
+    objectives: level.objectives.length,
+    objectiveLabels: level.objectives.map((o) => o.label),
+    enemies: d.combat.enemies.length,
+    healthHud: document.getElementById('p0Health')?.textContent || '',
+  };
+});
+
 /* Rough fps probe. */
+await page.bringToFront();
 const fps = await page.evaluate(
   () =>
     new Promise((resolve) => {
@@ -268,6 +353,7 @@ if (rules.hasKillstreakUi) failures.push('campaign exposes killstreak UI');
 if (movement.walkSpeed < 4.6 || movement.walkSpeed > 5.1) failures.push('walk speed does not match shared movement data');
 if (movement.sprintSpeed < 7.5 || movement.sprintSpeed > 8.2) failures.push('sprint speed does not match shared movement data');
 if (movement.sprintFov < 80) failures.push('sprint FOV push is missing');
+if (!movement.firstJump || !movement.doubleJumped) failures.push('jump/double jump edge is missing');
 if (movement.crouchSpeed < 2.1 || movement.crouchSpeed > 2.6) failures.push('crouch speed does not match shared movement data');
 if (Math.abs(movement.crouchHeight - 1.08) > 0.03) failures.push('crouch height does not reach shared stance height');
 if (movement.proneSpeed < 0.95 || movement.proneSpeed > 1.35) failures.push('prone speed does not match shared movement data');
@@ -277,8 +363,16 @@ if (!movement.proneBlocksSprint) failures.push('prone does not block sprinting')
 if (!movement.crouchFromProne) failures.push('crouch input does not rise out of prone');
 if (!movement.toggledProne || !movement.exitedProne) failures.push('Z prone toggle failed');
 if (stanceHud.text !== '卧倒' || !stanceHud.proneClass) failures.push('stance HUD does not report prone state');
+if (!systems.weaponData) failures.push('shared weapon handling data missing');
+if (!systems.fireCooldown) failures.push('weapon fire cooldown missing');
+if (systems.adsEase < 0.75 || !systems.adsReleased) failures.push('ADS toggle/ease failed');
+if (!systems.reloadStarted || !systems.reloadFinished || !systems.reloadFilled) failures.push('timed reload failed');
+if (systems.objectives !== 9) failures.push('mission objective chain is not 9 steps');
+if (systems.enemies < 26) failures.push('mission needs 26-34 hostiles');
+if (!systems.healthHud) failures.push('campaign health HUD missing');
+if (!state.backLink) failures.push('campaign back-to-main-menu link missing');
 
-console.log(JSON.stringify({ state, rules, movement, stanceHud, fps, errors, failures }, null, 2));
+console.log(JSON.stringify({ state, rules, movement, stanceHud, systems, fps, errors, failures }, null, 2));
 await browser.close();
 
 if (errors.length || failures.length || !state.badge || !state.asset.includes('程序化')) process.exitCode = 1;

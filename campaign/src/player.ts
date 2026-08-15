@@ -35,10 +35,12 @@ export class FirstPersonPlayer {
   crouch = false;
   prone = false;
   height = STANCE.standHeight;
+  aimEase = 0;
   private pos = new THREE.Vector3(0, 0, 82);
   private vel = new THREE.Vector3();
   private onGround = true;
   private jumpHeld = false;
+  private jumpsLeft = 1;
   private bobT = 0;
   private stepPhase = 0;
   private baseFov = STANCE.baseFov;
@@ -95,13 +97,15 @@ export class FirstPersonPlayer {
 
     const forward = (input.forward ? 1 : 0) - (input.back ? 1 : 0);
     const strafe = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-    const maxSpeed = this.prone
-      ? SPEED.prone
-      : this.crouch
-        ? SPEED.crouch
-        : wantSprint
-          ? SPEED.sprint
-          : SPEED.walk;
+    const maxSpeed =
+      (this.prone
+        ? SPEED.prone
+        : this.crouch
+          ? SPEED.crouch
+          : wantSprint
+            ? SPEED.sprint
+            : SPEED.walk) *
+      (1 - 0.4 * this.aimEase);
     const wishX = -Math.sin(this.yaw) * forward + Math.cos(this.yaw) * strafe;
     const wishZ = -Math.cos(this.yaw) * forward - Math.sin(this.yaw) * strafe;
     const len = Math.hypot(wishX, wishZ) || 1;
@@ -129,9 +133,18 @@ export class FirstPersonPlayer {
 
     const jumpPressed = input.jump && !this.jumpHeld;
     this.jumpHeld = input.jump;
+    if (this.onGround) this.jumpsLeft = 1;
+    let jumpedNow = false;
     if (this.onGround && jumpPressed && !this.crouch && !this.prone) {
       this.vel.y = PHYS.jumpVelocity;
       this.onGround = false;
+      this.jumpsLeft = 1;
+      jumpedNow = true;
+      SFX.jump();
+    } else if (!jumpedNow && !this.onGround && jumpPressed && this.jumpsLeft > 0 && !this.prone) {
+      this.jumpsLeft--;
+      this.vel.y = PHYS.doubleJumpVelocity;
+      SFX.jump();
     }
 
     this.pos.x += this.vel.x * dt;
@@ -193,10 +206,12 @@ export class FirstPersonPlayer {
     this.pitch = -0.06;
     this.onGround = true;
     this.jumpHeld = false;
+    this.jumpsLeft = 1;
     this.proneRequested = false;
     this.crouch = false;
     this.prone = false;
     this.height = STANCE.standHeight;
+    this.aimEase = 0;
     this.snapToGround(level);
     this.applyView();
   }

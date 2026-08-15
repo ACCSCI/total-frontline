@@ -455,7 +455,7 @@
       <button class="menuEntry" type="button" data-menu-target="singleMenu"><span class="code">01 // SOLO</span><strong>单人模式</strong><small>选择战区并投入 6 对 6 死亡竞赛</small></button>
       <button class="menuEntry" type="button" data-menu-target="loadoutMenu"><span class="code">02 // LOADOUT</span><strong>武器配置</strong><small>配置主武器瞄具、枪口、握把与弹匣</small></button>
       <button class="menuEntry" type="button" data-menu-target="settingsMenu"><span class="code">03 // SYSTEM</span><strong>全局设置</strong><small>灵敏度、视野、音量与操作偏好</small></button>
-      <button class="menuEntry" type="button" data-menu-target="campaignMenu"><span class="code">04 // CAMPAIGN</span><strong>单人战役</strong><small>剧情行动尚未部署</small><span class="badge">0 任务</span></button>
+      <button class="menuEntry" type="button" data-menu-target="campaignMenu"><span class="code">04 // CAMPAIGN</span><strong>单人战役</strong><small>「鹰落」— 黑森林河谷救援行动</small><span class="badge">1 任务</span></button>
     </nav>
     <div id="menuOverview"><span>ESC 返回上一级</span><span id="menuRendererState">WEBGPU 检测中</span></div>
 
@@ -493,8 +493,11 @@
     </section>
 
     <section class="menuPage" id="campaignMenu" hidden aria-labelledby="campaignMenuTitle">
-      <div class="menuPageHead"><button class="menuBack" type="button">‹ 返回</button><div><span>STORY OPERATIONS / 0</span><h2 id="campaignMenuTitle">单人战役</h2></div></div>
-      <div class="hint">暂无可用行动</div>
+      <div class="menuPageHead"><button class="menuBack" type="button">‹ 返回</button><div><span>STORY OPERATIONS / 01</span><h2 id="campaignMenuTitle">单人战役</h2></div></div>
+      <div class="maps">
+        <button type="button" class="mapCard" id="campaignLaunch"><span class="mk">行动 03 — 斯科拉边境</span><span class="mn">鹰落 · 黑森林河谷</span><span class="md">暴雨夜搜救 VEGA<br>WebGPU 渲染 · 即时演算开场</span><span class="go">进入战役 ▸</span></button>
+      </div>
+      <div class="hint">全新线性任务 · 不提供连杀奖励 · 阵亡回检查点</div>
     </section>
   </div>
 </div>

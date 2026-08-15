@@ -40,4 +40,17 @@ export async function runMenuSmoke(page, check) {
   await page.keyboard.press('Escape');
   await page.click('[data-menu-target="singleMenu"]');
   check(await page.evaluate(() => !document.getElementById('singleMenu').hidden), 'single-player entry owns the two existing maps');
+  await page.keyboard.press('Escape');
+  await page.click('[data-menu-target="campaignMenu"]');
+  const campaignEntry = await page.evaluate(() => ({
+    visible: !document.getElementById('campaignMenu').hidden,
+    mission: document.getElementById('campaignLaunch')?.querySelector('.mn')?.textContent || '',
+    hint: document.querySelector('#campaignMenu .hint')?.textContent || '',
+  }));
+  check(
+    campaignEntry.visible && campaignEntry.mission.includes('鹰落') && campaignEntry.hint.includes('不提供连杀奖励'),
+    'campaign entry is reachable from the shared main menu'
+  );
+  await page.keyboard.press('Escape');
+  await page.click('[data-menu-target="singleMenu"]');
 }

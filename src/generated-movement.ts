@@ -12,7 +12,8 @@ const SHARED_MOVEMENT = {
     "airAcceleration": 11,
     "friction": 11.5,
     "gravity": -19.5,
-    "jumpVelocity": 6.95
+    "jumpVelocity": 6.95,
+    "doubleJumpVelocity": 6.05
   },
   "stance": {
     "standHeight": 1.72,

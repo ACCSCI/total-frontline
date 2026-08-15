@@ -1,15 +1,18 @@
 import * as THREE from 'three';
 import { createRenderer, type GameRenderer } from './renderer';
-import { buildP0Level, buildSupplyCrate, snapObjectToTerrain, windAt, type P0Level } from './level';
+import { buildP0Level, buildSupplyCrate, type P0Level } from './level';
+import { snapObjectToTerrain, windAt } from './terrain';
 import { ScreenRain } from './screen-rain';
 import { FirstPersonPlayer } from './player';
 import { makeIntroCutscene, makeOutroCutscene, Sequencer } from './sequencer';
 import { SFX } from './sfx';
 import { PropDebugger } from './debug-mode';
 import { predictGroundDelta } from './ground-model';
-import { CampaignRules, P0Combat } from './campaign';
+import { CampaignRules } from './campaign';
+import { P0Combat } from './combat';
 import { ViewmodelRig } from './viewmodel';
 import { Crosshair } from './crosshair';
+import missionsData from '../../shared/missions.json';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const loading = document.getElementById('loading') as HTMLDivElement;
@@ -34,6 +37,8 @@ let cutsceneKind: 'intro' | 'outro' | null = null;
 let controlsEnabled = false;
 let reachedExit = false;
 let completed = false;
+let firing = false;
+let pointerLocked = false;
 let lightningOn = false;
 let introState: 'waiting' | 'typing' | 'flying' | 'done' = 'waiting';
 let introToken = 0;
@@ -156,11 +161,8 @@ async function startTyping() {
   introOverlay.classList.add('typing');
   const token = ++introToken;
 
-  const lines = [
-    '斯科拉边境 · 黑森林河谷',
-    '当地时间 02:17 · 暴雨',
-    '任务：回收幸存者 VEGA',
-  ];
+  const m = missionsData.mission01;
+  const lines = [m.location, m.time, `任务：回收幸存者 VEGA`];
   let full = '';
   for (let li = 0; li < lines.length; li++) {
     for (const ch of lines[li]) {
@@ -297,8 +299,15 @@ async function boot() {
       } else if (controlsEnabled && !completed) {
         handleKeys();
         player.update(dt, level);
+        player.aimEase = campaign?.adsEase ?? 0;
+        campaign?.update(dt);
         stanceText.textContent = player.prone ? '卧倒' : player.crouch ? '蹲伏' : '站立';
         stanceText.classList.toggle('prone', player.prone);
+
+        if (firing && combat?.shoot(player.camera)) {
+          viewmodel?.punch();
+          crosshair?.onFire();
+        }
 
         /* objective progression along the linear corridor */
         for (const obj of level.objectives) {
@@ -307,7 +316,7 @@ async function boot() {
             currentObjectiveIndex++;
           }
         }
-        if (!reachedExit && player.position.z <= -72) {
+        if (!reachedExit && player.position.z <= -84) {
           reachedExit = true;
           playOutro();
         }
@@ -324,12 +333,26 @@ async function boot() {
       SFX.update(dt);
       if (crosshair && controlsEnabled && introState === 'done' && !completed) {
         const speed = player.horizontalSpeed;
-        const baseSpread = campaign?.primary ? 0.0018 : 0.0022;
+        const baseSpread = campaign?.activeWeapon?.def.spreadBase || 0.0018;
         crosshair.update(dt, speed, baseSpread, false);
       }
+      if (campaign?.activeWeapon && campaign.adsEase > 0.001) {
+        player.camera.fov = THREE.MathUtils.lerp(
+          player.camera.fov,
+          campaign.activeWeapon.def.adsFov,
+          campaign.adsEase
+        );
+        player.camera.updateProjectionMatrix();
+      }
+      const scoped =
+        controlsEnabled &&
+        !completed &&
+        campaign?.activeWeapon?.def.id === 'sr7' &&
+        campaign.adsEase > 0.55;
+      crosshair?.setHidden(!pointerLocked || !controlsEnabled || !!debug?.active || scoped);
       renderer.render(scene, player.camera);
       if (viewmodel) {
-        viewmodel.root.visible = controlsEnabled && !completed && !cutscene && introState === 'done';
+        viewmodel.root.visible = controlsEnabled && !completed && !cutscene && introState === 'done' && !scoped;
         if (viewmodel.root.visible) viewmodel.update(dt, player);
         if (viewmodel.root.visible) {
           renderer.instance.autoClear = false;
@@ -362,9 +385,9 @@ introOverlay.addEventListener('click', () => {
 });
 
 document.addEventListener('pointerlockchange', () => {
-  const locked = document.pointerLockElement === canvas;
-  crosshair?.setHidden(!locked || !controlsEnabled || !!debug?.active);
-  if (locked) {
+  pointerLocked = document.pointerLockElement === canvas;
+  crosshair?.setHidden(!pointerLocked || !controlsEnabled || !!debug?.active);
+  if (pointerLocked) {
     hint.classList.remove('on');
   } else if (controlsEnabled && !cutscene && !completed && !debug?.active) {
     hint.classList.add('on');
@@ -380,13 +403,23 @@ document.addEventListener('mousemove', (event) => {
 });
 
 document.addEventListener('mousedown', (event) => {
+  if (event.button === 2 && controlsEnabled && !debug?.active && !cutscene && !completed) {
+    event.preventDefault();
+    campaign?.toggleAim();
+    return;
+  }
   if (event.button !== 0) return;
   if (debug?.active || cutscene || completed || !controlsEnabled) return;
   if (document.pointerLockElement !== canvas) return;
+  firing = true;
   if (combat?.shoot(player.camera)) {
     viewmodel?.punch();
     crosshair?.onFire();
   }
+});
+
+document.addEventListener('mouseup', (event) => {
+  if (event.button === 0) firing = false;
 });
 
 addEventListener('wheel', (event) => {
@@ -396,9 +429,12 @@ addEventListener('wheel', (event) => {
 }, { passive: false });
 
 addEventListener('contextmenu', (event) => {
-  if (!debug?.active) return;
-  event.preventDefault();
-  debug.clearSelection();
+  if (debug?.active) {
+    event.preventDefault();
+    debug.clearSelection();
+    return;
+  }
+  if (controlsEnabled && !cutscene && !completed) event.preventDefault();
 });
 
 addEventListener('keydown', (event) => {
@@ -441,12 +477,13 @@ addEventListener('keydown', (event) => {
     combat?.tryInteractWeapon(player.position);
   }
   if (event.code === 'KeyR' && introState === 'done' && !event.repeat && controlsEnabled) {
-    campaign?.reload();
+    campaign?.startReload();
   }
   if ((event.code === 'Digit1' || event.code === 'Digit2') && introState === 'done') {
     campaign?.switchSlot(event.code === 'Digit1' ? 0 : 1);
   }
   if (event.code === 'Escape') {
+    firing = false;
     if (introState !== 'done') {
       skipIntro();
       return;
@@ -477,12 +514,14 @@ addEventListener('keyup', (event) => {
 addEventListener('blur', () => {
   keys.clear();
   player.input.jump = false;
+  firing = false;
 });
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     keys.clear();
     player.input.jump = false;
+    firing = false;
   }
 });
 
