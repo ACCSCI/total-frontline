@@ -31,43 +31,77 @@ import {
   showHudPrompt,
   showHudToast,
   stepAmmoPickups,
+  tryMissionInteraction,
   updateHealthHud,
 } from './combat-hud';
-import { stepCampaignTutorial } from './tutorial';
-import { enemyNameAt, makePickupRoot, spawnCampaignEnemy } from './combat-spawn'; import { assignEnemyIdles } from './enemy-idles';
+import {
+  addWorldPickup,
+  enemyNameAt,
+  prewarmWaveReserve,
+  spawnCampaignEnemy,
+  spawnMissionPickups,
+  spawnWaveFromReserve,
+} from './combat-spawn';
 import { detonateThrown, makeThrownGrenade } from './combat-throw';
 import { animateEnemyDeath, updateCampaignEnemy } from './combat-utils';
 import { DamageHud } from './damage-hud';
-import { spawnEnemyMuzzleFlash, spawnMuzzleFlash, spawnShell, spawnTracer, spawnWallSparks, warmupCombatFx } from './fx';
+import { assignEnemyIdles } from './enemy-idles';
+import {
+  spawnEnemyMuzzleFlash,
+  spawnMuzzleFlash,
+  spawnShell,
+  spawnTracer,
+  spawnWallSparks,
+  warmupCombatFx,
+} from './fx';
 import type { P0Level } from './level';
 import { MissionRuntime } from './mission-runtime';
 import { revealNameplate, updateEnemyNameplates } from './nameplates';
 import type { FirstPersonPlayer } from './player';
 import { SFX } from './sfx';
 import type { SoldierRig } from './soldier';
+import { stepCampaignTutorial } from './tutorial';
 
 export class P0Combat {
-  private scene: THREE.Scene;
+  readonly scene: THREE.Scene;
   level: P0Level;
-  private player: FirstPersonPlayer;
+  readonly player: FirstPersonPlayer;
   rules: CampaignRules;
-  pickups: Pickup[] = []; enemies: Enemy[] = []; throwables: ThrowableProjectile[] = []; kills = 0;
-  private triggeredWaves = new Set<string>(); private spawnTemplate: SoldierRig | null = null; private waveReserve: Enemy[] = [];
+  pickups: Pickup[] = [];
+  enemies: Enemy[] = [];
+  throwables: ThrowableProjectile[] = [];
+  kills = 0;
+  private triggeredWaves = new Set<string>();
+  private spawnTemplate: SoldierRig | null = null;
+  private waveReserve: Enemy[] = [];
   private enemiesSpawned = false;
-  private raycaster = new THREE.Raycaster(); private rayDir = new THREE.Vector3(); private rayRight = new THREE.Vector3(); private rayUp = new THREE.Vector3(); private muzzleWorld = new THREE.Vector3();
+  private raycaster = new THREE.Raycaster();
+  private rayDir = new THREE.Vector3();
+  private rayRight = new THREE.Vector3();
+  private rayUp = new THREE.Vector3();
+  private muzzleWorld = new THREE.Vector3();
   private activeCamera: THREE.PerspectiveCamera | null = null;
   private worldTargets: THREE.Object3D[] = [];
-  private shotObjects: THREE.Object3D[] = []; private shotDir = new THREE.Vector3(); private shotEnd = new THREE.Vector3(); private shellOrigin = new THREE.Vector3();
-  private flashEl = document.getElementById('p0Flash') as HTMLDivElement; readonly damageHud = new DamageHud();
-  private hitEl = document.getElementById('p0Hitmark') as HTMLDivElement; private pickupPrompt = document.getElementById('p0PickupPrompt') as HTMLDivElement; private toastEl = document.getElementById('p0Toast') as HTMLDivElement;
-  readonly checkpoints = new CheckpointTrack(); readonly mission: MissionRuntime; private shotSuppressed = false; private shotLoud = false;
+  private shotObjects: THREE.Object3D[] = [];
+  private shotDir = new THREE.Vector3();
+  private shotEnd = new THREE.Vector3();
+  private shellOrigin = new THREE.Vector3();
+  private flashEl = document.getElementById('p0Flash') as HTMLDivElement;
+  readonly damageHud = new DamageHud();
+  private hitEl = document.getElementById('p0Hitmark') as HTMLDivElement;
+  private pickupPrompt = document.getElementById('p0PickupPrompt') as HTMLDivElement;
+  readonly toastEl = document.getElementById('p0Toast') as HTMLDivElement;
+  readonly checkpoints = new CheckpointTrack();
+  readonly mission: MissionRuntime;
+  private shotSuppressed = false;
+  private shotLoud = false;
 
   constructor(
     scene: THREE.Scene,
     level: P0Level,
     rules: CampaignRules,
     player: FirstPersonPlayer,
-    private onExfil: () => void = () => {}
+    readonly onExfil: () => void = () => {}
   ) {
     this.scene = scene;
     this.level = level;
@@ -101,33 +135,7 @@ export class P0Combat {
   }
 
   private spawnPickups() {
-    for (const p of missionsData.mission01.weaponPickups)
-      this.addPickup('weapon', p.weapon, new THREE.Vector3(p.x, 0, p.z));
-    for (const p of missionsData.mission01.ammoPickups)
-      this.addPickup('ammo', undefined, new THREE.Vector3(p.x, 0, p.z), '弹药补给');
-  }
-
-  private addPickup(
-    kind: Pickup['kind'],
-    weaponId: string | undefined,
-    pos: THREE.Vector3,
-    labelOverride?: string
-  ) {
-    const def = weaponId ? PRIMARY_WEAPONS[weaponId] : null;
-    const label = labelOverride || (def ? weaponLootLabel(def.name, true) : ammoLootLabel(false));
-    const color = kind === 'ammo' ? 0x7f9a6a : 0xc88a3a;
-    const root = makePickupRoot(color, label);
-    root.position.set(pos.x, this.level.groundY(pos.x, pos.z) + 0.02, pos.z);
-    root.userData.debugKind = 'pickup';
-    this.scene.add(root);
-    this.pickups.push({
-      root,
-      kind,
-      weaponId,
-      label,
-      coolUntil: -1,
-      bobT: Math.random() * Math.PI * 2,
-    });
+    spawnMissionPickups(this);
   }
 
   private spawnEnemies() {
@@ -149,45 +157,25 @@ export class P0Combat {
   }
 
   private prewarmWaveReserve() {
-    for (const wave of missionsData.mission01.reinforcementWaves)
-      for (const p of wave.positions) {
-        const spawned = spawnCampaignEnemy(this.scene, this.level, p.x, p.z, enemyNameAt(this.enemies.length + this.waveReserve.length), this.spawnTemplate, {
-          kind: ((p as { kind?: EnemyKind }).kind || 'rifle') as EnemyKind,
-        });
-        this.spawnTemplate = spawned.template;
-        spawned.enemy.root.visible = false;
-        this.waveReserve.push(spawned.enemy);
-      }
-    const warmX = this.player.position.x + 1.5;
-    const warmZ = this.player.position.z + 4;
-    for (const e of this.waveReserve) {
-      e.root.visible = true;
-      e.root.position.set(warmX, this.level.groundY(warmX, warmZ) + 0.02, warmZ);
-    }
-    setTimeout(() => {
-      for (const e of this.waveReserve) e.root.visible = false;
-    }, 700);
+    this.spawnTemplate = prewarmWaveReserve(
+      this.scene,
+      this.level,
+      this.player.position.x,
+      this.player.position.z,
+      this.enemies,
+      this.waveReserve,
+      this.spawnTemplate
+    );
   }
 
   private spawnWave(wave: { z: number; positions: Array<{ x: number; z: number }> }) {
-    for (let i = 0; i < wave.positions.length; i++) {
-      const p = wave.positions[i];
-      const e = this.waveReserve.shift();
-      if (!e) break;
-      e.root.visible = true;
-      e.root.position.set(p.x, this.level.groundY(p.x, p.z) + 0.02, p.z);
-      e.baseX = p.x; e.baseZ = p.z;
-      e.kind = ((p as { kind?: EnemyKind }).kind || 'rifle') as EnemyKind;
-      e.fireT = 0.8 + Math.random() * 0.6; e.engaged = true; e.reactionT = 0.2; e.lastSeenT = 2;
-      e.patrolT = Math.random() * Math.PI * 2;
-      this.enemies.push(e);
-    }
+    spawnWaveFromReserve(this.level, this.waveReserve, this.enemies, wave);
   }
 
   nearestWeaponPickup(pos: THREE.Vector3): Pickup | null {
     const i = nearestWeaponLootIndex(
       this.pickups.map((p) => ({
-        kind: p.kind,
+        kind: p.kind === 'ammoDrop' ? 'ammo' : p.kind,
         x: p.root.position.x,
         z: p.root.position.z,
         coolUntil: p.coolUntil,
@@ -201,32 +189,7 @@ export class P0Combat {
   }
 
   tryInteractWeapon(pos: THREE.Vector3) {
-    const story = this.mission.tryInteract(this.player);
-    if (story === 'fuel-blast') {
-      this.mission.explodeFuel(this.enemies, (enemy) => this.killEnemy(enemy), this.player);
-      showHudToast(this.toastEl, '油料场已爆破 · 装甲追兵被延阻', 2.4);
-      return true;
-    }
-    if (story === 'exfil') {
-      showHudToast(this.toastEl, 'VEGA 已登车 · 立即撤离', 1.8);
-      this.onExfil();
-      return true;
-    }
-    if (story) {
-      showHudToast(this.toastEl, story, 2);
-      return true;
-    }
-    const p = this.nearestWeaponPickup(pos);
-    if (!p?.weaponId) return false;
-    const old = this.rules.pickupWeapon(p.weaponId);
-    if (old) {
-      p.weaponId = old.id;
-      p.label = weaponLootLabel(old.name, true);
-    } else {
-      p.root.visible = false;
-      p.coolUntil = performance.now() + 999999;
-    }
-    return true;
+    return tryMissionInteraction(this, pos);
   }
 
   private alertEnemiesToGunfire(radius: number, suppressed: boolean) {
@@ -257,7 +220,14 @@ export class P0Combat {
     const def = w.def;
     const stanceScale = this.player.stanceRecoilMultiplier;
     const recoilScale = THREE.MathUtils.lerp(1, def.adsRecoil, this.rules.adsEase) * stanceScale;
-    this.player.applyRecoil(def.camPitch, def.camYaw, def.fovKick, recoilScale, Math.max(0, this.rules.burstCount - 1), def.shakeAmt);
+    this.player.applyRecoil(
+      def.camPitch,
+      def.camYaw,
+      def.fovKick,
+      recoilScale,
+      Math.max(0, this.rules.burstCount - 1),
+      def.shakeAmt
+    );
     const suppressed = isSuppressed(w.attachments);
     SFX.gunshot(def.sound, suppressed);
     this.shotSuppressed = suppressed;
@@ -276,11 +246,22 @@ export class P0Combat {
     this.rayRight.crossVectors(this.rayDir, camera.up).normalize();
     this.rayUp.crossVectors(this.rayRight, this.rayDir).normalize();
 
-    const spread = currentSpread(w.spread, def, this.player.horizontalSpeed, this.player.grounded, this.player.prone, this.player.crouch, this.rules.adsEase);
+    const spread = currentSpread(
+      w.spread,
+      def,
+      this.player.horizontalSpeed,
+      this.player.grounded,
+      this.player.prone,
+      this.player.crouch,
+      this.rules.adsEase
+    );
 
     const pellets = Math.max(1, def.pellets);
-    const objects = this.shotObjects; objects.length = 0; objects.push(...this.worldTargets);
-    for (const e of this.enemies) if (e.alive) objects.push(e.soldier.hbHead, e.soldier.hbBody, e.soldier.hbLegs);
+    const objects = this.shotObjects;
+    objects.length = 0;
+    objects.push(...this.worldTargets);
+    for (const e of this.enemies)
+      if (e.alive) objects.push(e.soldier.hbHead, e.soldier.hbBody, e.soldier.hbLegs);
     const origin = muzzle || camera.position;
 
     for (let i = 0; i < pellets; i++) {
@@ -409,8 +390,11 @@ export class P0Combat {
     camera.getWorldDirection(this.rayDir);
     this.raycaster.set(camera.position, this.rayDir);
     this.raycaster.far = MELEE_RANGE;
-    const objects = this.shotObjects; objects.length = 0; objects.push(...this.worldTargets);
-    for (const e of this.enemies) if (e.alive) objects.push(e.soldier.hbHead, e.soldier.hbBody, e.soldier.hbLegs);
+    const objects = this.shotObjects;
+    objects.length = 0;
+    objects.push(...this.worldTargets);
+    for (const e of this.enemies)
+      if (e.alive) objects.push(e.soldier.hbHead, e.soldier.hbBody, e.soldier.hbLegs);
     const hit = this.raycaster.intersectObjects(objects, true)[0];
     if (!hit) return true;
     const resolved = this.resolveEnemy(hit.object);
@@ -424,15 +408,24 @@ export class P0Combat {
     enemy.flinch = Math.min(1, enemy.flinch + 0.9);
     SFX.melee(true);
     SFX.hitBeep(true);
-    if (this.hitEl) { this.hitEl.classList.add('on'); setTimeout(() => this.hitEl.classList.remove('on'), 90); }
+    if (this.hitEl) {
+      this.hitEl.classList.add('on');
+      setTimeout(() => this.hitEl.classList.remove('on'), 90);
+    }
     enemy.health = 0;
-    if (backstab) { showHudToast(this.toastEl, '背刺成功 · 未被发现', 1.6); this.killEnemy(enemy, 0, hit.distance); return true; }
-    enemy.engaged = true; revealNameplate(enemy); this.alertNeighbors(enemy, 18);
+    if (backstab) {
+      showHudToast(this.toastEl, '背刺成功 · 未被发现', 1.6);
+      this.killEnemy(enemy, 0, hit.distance);
+      return true;
+    }
+    enemy.engaged = true;
+    revealNameplate(enemy);
+    this.alertNeighbors(enemy, 18);
     this.killEnemy(enemy, 0, hit.distance);
     return true;
   }
 
-  private killEnemy(enemy: Enemy, pan = 0, dist = 0) {
+  killEnemy(enemy: Enemy, pan = 0, dist = 0) {
     if (!enemy.alive) return;
     enemy.alive = false;
     enemy.deathT = 0;
@@ -444,20 +437,27 @@ export class P0Combat {
     this.kills++;
     const x = enemy.root.position.x;
     const z = enemy.root.position.z;
-    const y = this.level.groundY(x, z);
     const drops = rollEnemyDrops();
     if (drops.ammo)
-      this.addPickup('ammo', undefined, new THREE.Vector3(x, 0, z), ammoLootLabel(true));
+      addWorldPickup(
+        this,
+        'ammoDrop',
+        undefined,
+        new THREE.Vector3(x, 0, z),
+        ammoLootLabel(true),
+        30000
+      );
     if (drops.weaponId) {
       const def = PRIMARY_WEAPONS[drops.weaponId];
-      this.addPickup(
+      addWorldPickup(
+        this,
         'lootWeapon',
         drops.weaponId,
         new THREE.Vector3(x + 0.8, 0, z),
-        weaponLootLabel(def?.name || drops.weaponId, false)
+        weaponLootLabel(def?.name || drops.weaponId, false),
+        30000
       );
     }
-    void y;
   }
 
   throwGrenade(kind: ThrowableKind, camera: THREE.PerspectiveCamera): boolean {
