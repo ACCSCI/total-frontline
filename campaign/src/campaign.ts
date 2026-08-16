@@ -100,6 +100,12 @@ export interface Enemy {
   reloadT: number;
   rounds: number;
   kind: EnemyKind;
+  engage: number;
+  strafeT: number;
+  suppress: number;
+  hasCover: boolean;
+  coverX: number;
+  coverZ: number;
 }
 
 export interface ThrowableProjectile {
