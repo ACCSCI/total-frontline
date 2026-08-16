@@ -111,7 +111,7 @@ export class P0Combat {
     this.collectWorldTargets();
     this.spawnPickups();
     rules.updateHud();
-    updateHealthHud(this.rules.playerHealth);
+    updateHealthHud(this.rules.playerHealth, this.rules.playerArmor, this.rules.playerArmorMax);
     warmupCombatFx(scene);
   }
   ensureEnemiesSpawned() {
@@ -477,7 +477,7 @@ export class P0Combat {
     if (this.mission.step(dt, this.player, this.level, this.enemies) === 'vega-dead')
       this.failToCheckpoint('VEGA 阵亡 · 已返回检查点');
     if (this.rules.playerHealth < 100 && this.rules.playerHealth > 0)
-      updateHealthHud(this.rules.playerHealth);
+      updateHealthHud(this.rules.playerHealth, this.rules.playerArmor, this.rules.playerArmorMax);
     stepAmmoPickups(this.pickups, playerPos, this.level.groundY, dt, this.rules, this.toastEl);
     const story = this.mission.prompt(this.player);
     const wp = this.nearestWeaponPickup(playerPos);
@@ -549,9 +549,8 @@ export class P0Combat {
 
   hurtPlayer(amount: number, shooter?: Enemy) {
     if (this.rules.playerHealth <= 0) return;
-    this.rules.playerHealth = Math.max(0, this.rules.playerHealth - amount);
-    this.rules.lastHurt = performance.now();
-    updateHealthHud(this.rules.playerHealth);
+    this.rules.takeDamage(amount);
+    updateHealthHud(this.rules.playerHealth, this.rules.playerArmor, this.rules.playerArmorMax);
     let pan = 0;
     let dist = 0;
     if (shooter && this.activeCamera) {

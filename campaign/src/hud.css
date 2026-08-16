@@ -28,6 +28,44 @@
   color: #dff5e6;
 }
 
+#p0ArmorBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 280px;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  background: rgba(6, 10, 15, 0.55);
+  border-left: 2px solid rgba(110, 180, 235, 0.6);
+}
+
+#p0ArmorBox span {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: rgba(170, 205, 230, 0.82);
+}
+
+#p0ArmorBox b {
+  font-family: Consolas, monospace;
+  font-size: 14px;
+  color: #d9ecff;
+}
+
+#p0ArmorBar {
+  flex: 1;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+#p0ArmorFill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #7fc4ff, #3d8fd6);
+  transition: transform 0.16s ease-out;
+}
+
 #p0HealthBar {
   flex: 1;
   height: 8px;
