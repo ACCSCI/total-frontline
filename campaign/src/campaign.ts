@@ -51,11 +51,13 @@ export interface CarriedWeapon {
 
 export interface Pickup {
   root: THREE.Group;
-  kind: 'weapon' | 'ammo' | 'lootWeapon';
+  kind: 'weapon' | 'ammo' | 'lootWeapon' | 'ammoDrop';
   weaponId?: string;
   label: string;
   coolUntil: number;
   bobT: number;
+  /** 0 = permanent. Enemy drops expire after a few seconds. */
+  expiresAt: number;
 }
 
 export interface Enemy {

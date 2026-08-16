@@ -1,14 +1,17 @@
+import type * as THREE from 'three';
 import {
   AMMO_PICKUP_AMOUNT,
   AMMO_PICKUP_COOLDOWN_MS,
-  type MissionState,
   applyCheckpointRestore,
+  type MissionState,
   nextAmmoCooldown,
   shouldAutoPickupAmmo,
+  weaponLootLabel,
 } from '../../shared/gameplay';
 import type { CampaignRules, Enemy, Pickup } from './campaign';
 import type { CheckpointTrack } from './checkpoints';
 import type { P0Level } from './level';
+import type { MissionRuntime } from './mission-runtime';
 import type { FirstPersonPlayer } from './player';
 import { SFX } from './sfx';
 
@@ -23,12 +26,20 @@ export function stepAmmoPickups(
   const now = performance.now();
   for (const p of pickups) {
     if (!p.root.visible) continue;
+    if (p.expiresAt > 0 && now >= p.expiresAt) {
+      p.root.visible = false;
+      p.expiresAt = 0;
+      p.coolUntil = performance.now() + 999999;
+      continue;
+    }
+    const fade = p.expiresAt > 0 ? Math.min(1, Math.max(0.25, (p.expiresAt - now) / 2600)) : 1;
+    p.root.scale.setScalar(fade);
     p.bobT += dt * 2.2;
     p.root.position.y =
       groundY(p.root.position.x, p.root.position.z) + 0.04 + Math.sin(p.bobT) * 0.07;
     p.root.rotation.y += dt * 0.8;
     const d = Math.hypot(p.root.position.x - playerPos.x, p.root.position.z - playerPos.z);
-    if (p.kind === 'ammo' && shouldAutoPickupAmmo(d, p.coolUntil, now)) {
+    if ((p.kind === 'ammo' || p.kind === 'ammoDrop') && shouldAutoPickupAmmo(d, p.coolUntil, now)) {
       rules.addAmmo(AMMO_PICKUP_AMOUNT);
       p.coolUntil = nextAmmoCooldown(now);
       p.root.visible = false;
@@ -48,6 +59,46 @@ export function showHudToast(el: HTMLDivElement | null, text: string, duration: 
   setTimeout(() => {
     if (el.textContent === text) el.hidden = true;
   }, duration * 1000);
+}
+
+export interface MissionInteractHost {
+  mission: MissionRuntime;
+  player: FirstPersonPlayer;
+  enemies: Enemy[];
+  toastEl: HTMLDivElement;
+  rules: CampaignRules;
+  onExfil: () => void;
+  nearestWeaponPickup(pos: THREE.Vector3): Pickup | null;
+  killEnemy(enemy: Enemy): void;
+}
+
+export function tryMissionInteraction(host: MissionInteractHost, pos: THREE.Vector3): boolean {
+  const story = host.mission.tryInteract(host.player);
+  if (story === 'fuel-blast') {
+    host.mission.explodeFuel(host.enemies, (enemy) => host.killEnemy(enemy), host.player);
+    showHudToast(host.toastEl, '油料场已爆破 · 装甲追兵被延阻', 2.4);
+    return true;
+  }
+  if (story === 'exfil') {
+    showHudToast(host.toastEl, 'VEGA 已登车 · 立即撤离', 1.8);
+    host.onExfil();
+    return true;
+  }
+  if (story) {
+    showHudToast(host.toastEl, story, 2);
+    return true;
+  }
+  const p = host.nearestWeaponPickup(pos);
+  if (!p?.weaponId) return false;
+  const old = host.rules.pickupWeapon(p.weaponId);
+  if (old) {
+    p.weaponId = old.id;
+    p.label = weaponLootLabel(old.name, true);
+  } else {
+    p.root.visible = false;
+    p.coolUntil = performance.now() + 999999;
+  }
+  return true;
 }
 
 export function showHudPrompt(el: HTMLDivElement | null, text: string, duration: number) {
