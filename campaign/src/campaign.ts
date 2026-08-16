@@ -112,6 +112,8 @@ export class CampaignRules {
   slots: [CarriedWeapon | null, CarriedWeapon | null];
   activeSlot = 0;
   playerHealth = 100;
+  playerArmor = 50;
+  playerArmorMax = 50;
   throws: ThrowInventory = createThrowInventory();
   reloadT = 0;
   reloadDuration = 0;
@@ -213,6 +215,18 @@ export class CampaignRules {
     ) {
       this.playerHealth = Math.min(100, this.playerHealth + 26 * dt);
     }
+  }
+
+  /** Port of the single-player armour model: 50 AP absorbs 50% of incoming damage. */
+  takeDamage(amount: number) {
+    let dmg = amount;
+    if (this.playerArmor > 0) {
+      const absorbed = Math.min(this.playerArmor, dmg * 0.5);
+      this.playerArmor = Math.max(0, this.playerArmor - absorbed);
+      dmg -= absorbed;
+    }
+    this.playerHealth = Math.max(0, this.playerHealth - dmg);
+    this.lastHurt = performance.now();
   }
 
   switchSlot(index: number) {

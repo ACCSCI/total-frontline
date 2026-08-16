@@ -117,11 +117,16 @@ export function showHudPrompt(el: HTMLDivElement | null, text: string, duration:
   }
 }
 
-export function updateHealthHud(health: number) {
+export function updateHealthHud(health: number, armor?: number, armorMax = 50) {
   const num = document.getElementById('p0Health') as HTMLDivElement;
   const fill = document.getElementById('p0HealthFill') as HTMLDivElement;
   if (num) num.textContent = String(Math.round(health));
   if (fill) fill.style.transform = `scaleX(${health / 100})`;
+  if (armor === undefined) return;
+  const armorNum = document.getElementById('p0Armor') as HTMLDivElement;
+  const armorFill = document.getElementById('p0ArmorFill') as HTMLDivElement;
+  if (armorNum) armorNum.textContent = String(Math.round(armor));
+  if (armorFill) armorFill.style.transform = `scaleX(${armor / Math.max(1, armorMax)})`;
 }
 
 export function respawnAtCheckpoint(
@@ -139,8 +144,9 @@ export function respawnAtCheckpoint(
 ) {
   if (ctx.failEl) ctx.failEl.hidden = true;
   ctx.rules.playerHealth = 100;
+  ctx.rules.playerArmor = ctx.rules.playerArmorMax;
   ctx.rules.lastHurt = performance.now();
-  updateHealthHud(100);
+  updateHealthHud(100, ctx.rules.playerArmor, ctx.rules.playerArmorMax);
   ctx.checkpoints.restore(ctx.player, ctx.level);
   if (ctx.mission) applyCheckpointRestore(ctx.mission, ctx.checkpoints.currentId, ctx.enemies);
   showHudToast(ctx.toastEl, message, 1.8);

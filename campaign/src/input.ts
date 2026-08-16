@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import type { CampaignRules } from './campaign';
 import type { P0Combat } from './combat';
+import { showHudToast, updateHealthHud } from './combat-hud';
 import type { Crosshair } from './crosshair';
 import type { PropDebugger } from './debug-mode';
 import type { P0Level } from './level';
@@ -9,7 +10,6 @@ import type { FirstPersonPlayer } from './player';
 import type { GameRenderer } from './renderer';
 import type { ScreenRain } from './screen-rain';
 import type { Sequencer } from './sequencer';
-import { showHudToast } from './combat-hud';
 import { SETTINGS } from './settings';
 import { SFX } from './sfx';
 import type { ViewmodelRig } from './viewmodel';
@@ -205,16 +205,37 @@ export function bindCampaignInput(host: CampaignInputHost) {
       event.preventDefault();
     }
     if (event.code === 'KeyZ' && live && !event.repeat) host.player.proneRequested = true;
-    const debugJump = host.introState === 'done' && !host.cutscene && !host.completed && !host.debug?.active;
+    const debugJump =
+      host.introState === 'done' && !host.cutscene && !host.completed && !host.debug?.active;
     if (event.code === 'F1' && debugJump && !event.repeat) {
       event.preventDefault();
       const cp = host.combat?.checkpoints.jump(host.player, host.level, -1);
-      if (!cp) showHudToast(document.getElementById('p0Toast') as HTMLDivElement | null, '已经是第一个检查点', 1.2);
+      if (!cp)
+        showHudToast(
+          document.getElementById('p0Toast') as HTMLDivElement | null,
+          '已经是第一个检查点',
+          1.2
+        );
+      else if (host.campaign) {
+        host.campaign.playerHealth = 100;
+        host.campaign.playerArmor = host.campaign.playerArmorMax;
+        updateHealthHud(100, host.campaign.playerArmor, host.campaign.playerArmorMax);
+      }
     }
     if (event.code === 'F2' && debugJump && !event.repeat) {
       event.preventDefault();
       const cp = host.combat?.checkpoints.jump(host.player, host.level, 1);
-      if (!cp) showHudToast(document.getElementById('p0Toast') as HTMLDivElement | null, '已经是最后一个检查点', 1.2);
+      if (!cp)
+        showHudToast(
+          document.getElementById('p0Toast') as HTMLDivElement | null,
+          '已经是最后一个检查点',
+          1.2
+        );
+      else if (host.campaign) {
+        host.campaign.playerHealth = 100;
+        host.campaign.playerArmor = host.campaign.playerArmorMax;
+        updateHealthHud(100, host.campaign.playerArmor, host.campaign.playerArmorMax);
+      }
     }
     if (event.code === 'F3' && host.introState === 'done') {
       event.preventDefault();
@@ -338,7 +359,9 @@ export function bindCampaignInput(host: CampaignInputHost) {
     host.crosshair?.layout();
   });
 
-  document.getElementById('restartBtn')?.addEventListener('click', () => { location.href = '../'; });
+  document.getElementById('restartBtn')?.addEventListener('click', () => {
+    location.href = '../';
+  });
   bindPauseMenu(host.pauseEl, () => {
     if (host.paused) host.requestPlayLock();
   });
