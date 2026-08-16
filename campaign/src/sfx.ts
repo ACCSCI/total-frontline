@@ -8,7 +8,13 @@
    - forest air rumble
    - generated thunder (low sweep + crack), scheduled on its own clock
    ------------------------------------------------------------------------- */
+import { createSampleBank } from './audio-samples';
+import { SETTINGS } from './settings';
 import { installAmbience } from './sfx-env';
+import { installWaterSfx } from './sfx-water';
+import { playProceduralGunshot } from './sfx-gunshot';
+
+const samples = createSampleBank();
 
 const SFX = (() => {
   let ctx: AudioContext | null = null;
@@ -36,9 +42,10 @@ const SFX = (() => {
     comp.attack.value = 0.002;
     comp.release.value = 0.12;
     master = ctx.createGain();
-    master.gain.value = 0.85;
+    master.gain.value = SETTINGS.masterVolume;
     master.connect(comp);
     comp.connect(ctx.destination);
+    samples.connect(ctx, master);
 
     const len = ctx.sampleRate * 2;
     noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -108,6 +115,7 @@ const SFX = (() => {
 
   /* Ported from the main game's SFX.footstep: two noise layers, no samples. */
   function footstep(vol: number, pan: number) {
+    if (samples.impact('footstep', 0.42 * vol, pan)) return;
     noiseBurst({
       type: 'lowpass',
       freq: 380 + Math.random() * 240,
@@ -136,6 +144,7 @@ const SFX = (() => {
     delay?: number;
     lp?: number;
     pan?: number;
+    atk?: number;
   }) {
     if (!ctx || !master) return;
     const t0 = ctx.currentTime + (o.delay || 0);
@@ -144,8 +153,9 @@ const SFX = (() => {
     osc.frequency.setValueAtTime(o.f0 || 120, t0);
     if (o.f1) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f1), t0 + (o.dur || 1.2));
     const g = ctx.createGain();
+    const atk = o.atk ?? 0.05;
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, o.gain || 0.1), t0 + 0.05);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, o.gain || 0.1), t0 + atk);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + (o.dur || 1.2));
     osc.connect(g);
     let out: AudioNode = g;
@@ -314,74 +324,28 @@ const SFX = (() => {
   }
 
   function reloadStage(weaponId: string, stage: 'lift' | 'out' | 'in' | 'action') {
+    if (samples.reload(weaponId, stage)) return;
     if (stage === 'out') magOut();
     else if (stage === 'in') magIn();
     else if (stage === 'action') boltClick();
     else weaponSwap();
   }
 
-  function gunshot(weaponId = 'm4') {
-    return gunshotAt(weaponId, 0, 0);
+  function gunshot(weaponId = 'm4', suppressed = false) {
+    return gunshotAt(weaponId, 0, 0, suppressed);
   }
 
-  function gunshotAt(weaponId: string, pan = 0, dist = 0) {
+  function gunshotAt(weaponId: string, pan = 0, dist = 0, suppressed = false) {
     const d = Math.max(0, dist || 0);
+    if (samples.gunshot(weaponId, pan, d, suppressed)) return;
     const vol = Math.max(0.018, 0.64 / (1 + (d / 11) ** 1.65));
-    const ak = weaponId === 'ak12';
-    let kind: 'rifle' | 'shotgun' | 'sniper' | 'pistol' = 'rifle';
-    if (weaponId === 'ks12') kind = 'shotgun';
-    else if (weaponId === 'sr7') kind = 'sniper';
-    else if (weaponId === 'p9') kind = 'pistol';
     const delay = dist / 340;
-    const n = (o: Parameters<typeof noiseBurst>[0]) =>
-      noiseBurst({ ...o, gain: (o.gain || 0) * vol, pan, delay: (o.delay || 0) + delay });
-    const t = (o: Parameters<typeof toneBurst>[0]) =>
-      toneBurst({ ...o, gain: (o.gain || 0) * vol, pan, delay: (o.delay || 0) + delay });
-
-    if (kind === 'rifle') {
-      n({ type: 'highpass', freq: 4200, gain: 0.62, dur: 0.022, atk: 0.0004 });
-      n({ type: 'bandpass', freq: 2100, q: 0.7, gain: 0.9, dur: 0.14, atk: 0.001, sweep: 600 });
-      n({ type: 'lowpass', freq: 420, gain: 0.66, dur: 0.11, atk: 0.001 });
-      t({
-        type: 'triangle',
-        f0: ak ? 175 : 210,
-        f1: ak ? 40 : 48,
-        dur: 0.1,
-        gain: ak ? 0.5 : 0.42,
-      });
-      t({
-        type: 'sine',
-        f0: ak ? 68 : 82,
-        f1: ak ? 32 : 38,
-        dur: 0.14,
-        gain: ak ? 0.42 : 0.34,
-        lp: 200,
-      });
-      n({ type: 'highpass', freq: 1400, gain: 0.1, dur: 0.42, atk: 0.02, delay: 0.02 });
-    } else if (kind === 'shotgun') {
-      n({ type: 'highpass', freq: 3600, gain: 0.5, dur: 0.026, atk: 0.0004 });
-      n({ type: 'lowpass', freq: 900, gain: 1.05, dur: 0.42, atk: 0.001, sweep: 170 });
-      n({ type: 'bandpass', freq: 1500, q: 0.6, gain: 0.6, dur: 0.12, atk: 0.001 });
-      t({ type: 'sine', f0: 110, f1: 30, dur: 0.32, gain: 0.72 });
-      t({ type: 'sine', f0: 62, f1: 28, dur: 0.2, gain: 0.4, lp: 150 });
-      n({ type: 'highpass', freq: 900, gain: 0.16, dur: 0.7, atk: 0.03, delay: 0.02 });
-    } else if (kind === 'sniper') {
-      n({ type: 'highpass', freq: 5200, gain: 0.85, dur: 0.014, atk: 0.0002 });
-      n({ type: 'highpass', freq: 3200, gain: 1, dur: 0.05, atk: 0.0005 });
-      n({ type: 'bandpass', freq: 1250, q: 0.5, gain: 1.05, dur: 0.3, atk: 0.0008, sweep: 340 });
-      n({ type: 'lowpass', freq: 260, gain: 0.95, dur: 0.24, atk: 0.001 });
-      t({ type: 'triangle', f0: 150, f1: 34, dur: 0.28, gain: 0.62 });
-      t({ type: 'sine', f0: 58, f1: 26, dur: 0.3, gain: 0.44, lp: 150 });
-      n({ type: 'bandpass', freq: 900, q: 0.8, gain: 0.3, dur: 1.25, atk: 0.05, delay: 0.05 });
-      n({ type: 'highpass', freq: 2200, gain: 0.14, dur: 0.85, atk: 0.03, delay: 0.02 });
-    } else {
-      n({ type: 'highpass', freq: 4600, gain: 0.42, dur: 0.016, atk: 0.0003 });
-      n({ type: 'bandpass', freq: 1700, q: 1.1, gain: 0.7, dur: 0.11, atk: 0.001, sweep: 520 });
-      n({ type: 'lowpass', freq: 340, gain: 0.4, dur: 0.075, atk: 0.001 });
-      t({ type: 'square', f0: 280, f1: 70, dur: 0.06, gain: 0.24, lp: 1600 });
-      t({ type: 'sine', f0: 96, f1: 44, dur: 0.1, gain: 0.2, lp: 220 });
-      n({ type: 'highpass', freq: 1800, gain: 0.07, dur: 0.28, atk: 0.02, delay: 0.02 });
-    }
+    playProceduralGunshot(
+      weaponId,
+      suppressed,
+      (o) => noiseBurst({ ...o, gain: (o.gain || 0) * vol, pan, delay: (o.delay || 0) + delay }),
+      (o) => toneBurst({ ...o, gain: (o.gain || 0) * vol, pan, delay: (o.delay || 0) + delay })
+    );
   }
 
   function enemyDown() {
@@ -411,12 +375,56 @@ const SFX = (() => {
     });
   }
 
+  function melee(hit: boolean) {
+    noiseBurst({
+      type: hit ? 'lowpass' : 'bandpass',
+      freq: hit ? 430 : 1500,
+      gain: hit ? 0.34 : 0.17,
+      dur: hit ? 0.1 : 0.075,
+      atk: 0.001,
+    });
+    toneBurst({
+      type: 'triangle',
+      f0: hit ? 180 : 310,
+      f1: 75,
+      dur: 0.11,
+      gain: hit ? 0.18 : 0.09,
+    });
+  }
+
   function hitBeep(headshot: boolean) {
-    toneBurst({ type: 'sine', f0: headshot ? 1900 : 1350, dur: 0.045, gain: 0.13 });
-    if (headshot) toneBurst({ type: 'sine', f0: 2550, dur: 0.05, gain: 0.11, delay: 0.045 });
+    /* Same CoD tick as single-player: dry bandpass fwip, not a sine beep. */
+    noiseBurst({
+      type: 'bandpass',
+      freq: headshot ? 4200 : 3100,
+      q: headshot ? 5.5 : 4.2,
+      gain: headshot ? 0.28 : 0.22,
+      dur: 0.022,
+      atk: 0.0008,
+    });
+    toneBurst({
+      type: 'triangle',
+      f0: headshot ? 2450 : 1950,
+      f1: headshot ? 1800 : 1400,
+      dur: 0.018,
+      atk: 0.0008,
+      gain: 0.09,
+      lp: 5200,
+    });
+    if (headshot)
+      toneBurst({
+        type: 'square',
+        f0: 4300,
+        f1: 2600,
+        dur: 0.016,
+        atk: 0.0008,
+        gain: 0.05,
+        lp: 7000,
+      });
   }
 
   function impactWall(pan = 0, dist = 0) {
+    if (samples.impact('metal', 0.68, pan, dist)) return;
     const v = Math.max(0.15, Math.min(1, 1 - dist / 60));
     noiseBurst({
       type: 'bandpass',
@@ -440,6 +448,7 @@ const SFX = (() => {
   }
 
   function impactFlesh(pan = 0, dist = 0) {
+    if (samples.impact('flesh', 0.7, pan, dist)) return;
     const v = Math.max(0.2, Math.min(1, 1 - dist / 60));
     noiseBurst({
       type: 'lowpass',
@@ -457,7 +466,8 @@ const SFX = (() => {
     toneBurst({ type: 'sine', f0: 150, f1: 52, dur: 0.22, gain: 0.2 });
   }
 
-  function shellDrop(pan = 0) {
+  function shellDrop(pan = 0, heavy = false) {
+    if (samples.shell(heavy, pan)) return;
     noiseBurst({
       type: 'bandpass',
       freq: 3000 + Math.random() * 2200,
@@ -477,8 +487,9 @@ const SFX = (() => {
   }
 
   function killChime() {
-    toneBurst({ type: 'sine', f0: 900, dur: 0.07, gain: 0.11 });
-    toneBurst({ type: 'sine', f0: 1350, dur: 0.11, gain: 0.11, delay: 0.06 });
+    noiseBurst({ type: 'bandpass', freq: 1500, q: 3.2, gain: 0.2, dur: 0.038, atk: 0.001 });
+    toneBurst({ type: 'triangle', f0: 780, f1: 340, dur: 0.085, atk: 0.001, gain: 0.13, lp: 2400 });
+    toneBurst({ type: 'sine', f0: 210, f1: 88, dur: 0.09, atk: 0.002, gain: 0.09, lp: 600 });
   }
 
   function jump() {
@@ -494,6 +505,8 @@ const SFX = (() => {
     noiseBurst({ type: 'lowpass', freq: 820, gain: 0.24, dur: 0.11 });
     toneBurst({ type: 'square', f0: 280, f1: 95, dur: 0.07, gain: 0.1, lp: 1700, delay: 0.045 });
   }
+
+  const waterSfx = installWaterSfx(noiseBurst);
 
   function update(dt: number) {
     if (!ready || !ctx) return;
@@ -531,6 +544,8 @@ const SFX = (() => {
     update,
     thunder,
     footstep,
+    waterStep: waterSfx.waterStep,
+    waterImpact: waterSfx.waterImpact,
     typeKey,
     lineConfirm,
     revealHit,
@@ -540,6 +555,7 @@ const SFX = (() => {
     gunshotAt,
     enemyDown,
     enemyDeath,
+    melee,
     hitBeep,
     impactWall,
     impactFlesh,
@@ -554,6 +570,25 @@ const SFX = (() => {
     boltCycle,
     boltClick,
     weaponSwap,
+    pickup() {
+      magIn();
+      toneBurst({ type: 'sine', f0: 740, f1: 380, dur: 0.09, gain: 0.09, lp: 1900 });
+    },
+    setMasterVolume(value: number) {
+      if (master) master.gain.value = value;
+    },
+    suspend() {
+      if (ctx && ctx.state === 'running') void ctx.suspend();
+    },
+    resume() {
+      if (ctx && ctx.state === 'suspended') void ctx.resume();
+    },
+    setMusic(on: boolean) {
+      samples.setMusic(on);
+    },
+    sampleCount() {
+      return samples.loaded();
+    },
   };
 })();
 

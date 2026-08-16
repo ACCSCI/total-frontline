@@ -40,6 +40,36 @@ body {
   pointer-events: none;
 }
 
+/* Procedural cinematic grade: filmic vignette + cold night tint + fine grain.
+   It sits behind the rain/HUD so it never fights the UI. */
+#cinematicGrade {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.52) 100%),
+    linear-gradient(180deg, rgba(8, 18, 28, 0.14), rgba(2, 6, 10, 0.2));
+  mix-blend-mode: multiply;
+}
+
+#cinematicGrade::after {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  opacity: 0.16;
+  background-image:
+    repeating-radial-gradient(circle at 17% 32%, rgba(255, 255, 255, 0.14) 0 1px, transparent 1px 3px),
+    repeating-radial-gradient(circle at 73% 64%, rgba(255, 255, 255, 0.1) 0 1px, transparent 1px 4px);
+  animation: grainShift 0.9s steps(2) infinite;
+}
+
+@keyframes grainShift {
+  0% { transform: translate(0, 0); }
+  50% { transform: translate(-2px, 2px); }
+  100% { transform: translate(2px, -2px); }
+}
+
 #hud {
   position: fixed;
   inset: 0;
@@ -133,7 +163,7 @@ body {
 #objectiveBox {
   position: absolute;
   left: 24px;
-  bottom: 28px;
+  top: 112px;
   min-width: 320px;
   padding: 12px 16px;
   background: linear-gradient(90deg, rgba(8, 12, 18, 0.82), rgba(8, 12, 18, 0.25));
@@ -202,17 +232,53 @@ body {
   text-shadow: 0 1px 5px #000;
 }
 
+#p0LowHp {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(140, 0, 0, 0.62) 100%);
+  opacity: 0;
+}
+
 #p0Damage {
   position: fixed;
   inset: 0;
   z-index: 5;
   pointer-events: none;
-  background: radial-gradient(ellipse at center, rgba(120, 0, 0, 0) 42%, rgba(180, 20, 10, 0.42) 100%);
+  background: radial-gradient(ellipse at center, rgba(120, 0, 0, 0) 38%, rgba(180, 20, 10, 0.55) 100%);
   opacity: 0;
 }
 
-#p0Damage.on {
-  opacity: 1;
+#p0DmgDirs {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 5;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.dmgArc {
+  position: absolute;
+  left: -160px;
+  top: -160px;
+  width: 320px;
+  height: 320px;
+  opacity: 0;
+}
+
+.dmgArc::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 150px;
+  height: 60px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at 50% 100%, rgba(255, 40, 30, 0.85), rgba(255, 40, 30, 0) 72%);
+  clip-path: polygon(0% 100%, 100% 100%, 78% 0%, 22% 0%);
 }
 
 #p0Hitmark {
@@ -243,6 +309,20 @@ body {
 #p0Hitmark i:nth-child(2) { left: -14px; top: -1px; transform: rotate(-45deg); }
 #p0Hitmark i:nth-child(3) { left: 7px; top: -1px; transform: rotate(-45deg); }
 #p0Hitmark i:nth-child(4) { left: -14px; top: -1px; transform: rotate(45deg); }
+
+#cgFade {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+#cgFade.on {
+  opacity: 1;
+}
 
 #cutsceneBars {
   position: fixed;
@@ -399,6 +479,24 @@ body {
   100% {
     opacity: 0;
   }
+}
+
+#studioCredit {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 14;
+  opacity: 0;
+  pointer-events: none;
+  font-size: 13px;
+  letter-spacing: 0.32em;
+  color: rgba(236, 232, 224, 0.9);
+  text-shadow: 0 1px 10px #000;
+  transition: opacity 1.15s ease;
+}
+
+#studioCredit.in {
+  opacity: 1;
 }
 
 #complete {

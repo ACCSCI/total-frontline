@@ -295,14 +295,13 @@ const ACCENT_R = new THREE.MeshStandardMaterial({
    enough cast for the dot to sit against, and lets you see what you are
    shooting. depthWrite off so it blends with the world instead of masking it. */
 const OPTIC_GLASS = new THREE.MeshStandardMaterial({
-  color: 0x3d6274,
-  metalness: 0.42,
-  roughness: 0.1,
-  emissive: 0x0b1a22,
-  emissiveIntensity: 0.3,
+  color: 0x9aa8ae,
+  metalness: 0.08,
+  roughness: 0.04,
   transparent: true,
-  opacity: 0.2,
+  opacity: 0.045,
   depthWrite: false,
+  side: THREE.DoubleSide,
 });
 /* optic bodies are open tubes, so their inner wall has to render too */
 const TUBE_MAT = new THREE.MeshStandardMaterial({
@@ -405,18 +404,14 @@ function buildMicroDot(parent, y, z) {
   part(opt, TUBEZ(0.034, 0.086, 32), TUBE_MAT, 0, 0.05, 0);
   part(opt, TUBEZ(0.0395, 0.009, 32), GUNMETAL, 0, 0.05, -0.047);
   part(opt, TUBEZ(0.0395, 0.009, 32), GUNMETAL, 0, 0.05, 0.047);
-  const glass = part(opt, CYLZ(0.031, 0.031, 0.002, 32), OPTIC_GLASS, 0, 0.05, -0.039);
+  const glass = part(opt, CYLZ(0.0305, 0.0305, 0.0008, 32), OPTIC_GLASS, 0, 0.05, -0.038);
   glass.material = OPTIC_GLASS.clone();
-  glass.material.color.setHex(0x416f82);
-  glass.material.emissive.setHex(0x0d2730);
-  glass.material.opacity = 0.17;
-  glass.material.depthWrite = false;
-  const lensSheen = new THREE.MeshBasicMaterial({
-    color: 0x4da0b5,
-    transparent: true,
-    opacity: 0.08,
-  });
-  part(opt, CYLZ(0.026, 0.026, 0.001, 32), lensSheen, 0.006, 0.055, -0.041);
+  glass.material.opacity = 0.04;
+  const rearGlass = part(opt, CYLZ(0.0305, 0.0305, 0.0008, 32), OPTIC_GLASS, 0, 0.05, 0.038);
+  rearGlass.material = OPTIC_GLASS.clone();
+  rearGlass.material.opacity = 0.03;
+  /* Thin inner lip so the window reads as an opening, not a tinted disc. */
+  part(opt, TUBEZ(0.0308, 0.0035, 28), GUNMETAL, 0, 0.05, -0.043);
   part(opt, B(0.02, 0.014, 0.024), POLYMER, 0, 0.093, 0.002);
   part(opt, CYLZ(0.011, 0.011, 0.014, 16), GUNMETAL, 0.043, 0.05, 0, 0, PI / 2, 0);
   part(opt, CYLZ(0.007, 0.007, 0.014, 12), GUNMETAL, -0.042, 0.05, 0.014, 0, PI / 2, 0);
@@ -900,6 +895,11 @@ function buildPistol() {
   part(G, B(0.02, 0.02, 0.026), GUNMETAL, 0, 0.006, 0.062);
   part(G, B(0.034, 0.01, 0.04), POLYMER, 0, -0.01, 0.058);
 
+  const suppressor = new THREE.Group();
+  suppressor.visible = false;
+  G.add(suppressor);
+  part(suppressor, CYLZ(0.016, 0.0148, 0.092, 12), GUNMETAL, 0, 0.008, -0.238);
+  part(suppressor, TUBEZ(0.0164, 0.01, 12), POLYMER, 0, 0.008, -0.21);
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.008, -0.185);
   G.add(muzzle);
@@ -933,6 +933,7 @@ function buildPistol() {
     adsPos: new THREE.Vector3(0.0006, -0.0448, -0.4935),
     adsRot: new THREE.Vector3(0, 0, 0),
     adsRef: 0.6235,
+    attachmentNodes: { muzzle: { suppressor } },
   }; // front post
 }
 

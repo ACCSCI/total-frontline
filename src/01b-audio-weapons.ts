@@ -8,7 +8,7 @@ SFX.gunshot = (() => {
   const noise = (o) => SFX._noise(o);
   const tone = (o) => SFX._tone(o);
 
-  function gunshot(kind, pan, dist) {
+  function gunshot(kind, pan, dist, suppressed) {
     if (!SFX._ok()) return;
     /* The sampled AK has its own 7.62-style transient. If samples are not
        available, retain the proven procedural rifle stack at a slightly
@@ -18,6 +18,44 @@ SFX.gunshot = (() => {
     dist = dist || 0;
     const vol = SFX._weaponDistanceGain(dist);
     const delay = dist / 340;
+    if (suppressed) {
+      /* CoD MW can: no muzzle crack, short gas chuff, loud action, tiny body.
+         A pitched oscillator is what made the old can sound like a toy zap. */
+      const pistol = kind === 'pistol';
+      noise({
+        type: 'bandpass',
+        freq: pistol ? 1550 : kind === 'sniper' ? 880 : 1180,
+        q: 0.9,
+        gain: (pistol ? 0.4 : 0.48) * vol,
+        dur: pistol ? 0.042 : 0.055,
+        atk: 0.0004,
+        pan,
+        delay,
+        verb: 0.035,
+      });
+      noise({
+        type: 'highpass',
+        freq: pistol ? 2700 : 2100,
+        q: 1.35,
+        gain: 0.26 * vol,
+        dur: 0.026,
+        atk: 0.0003,
+        pan,
+        delay,
+        verb: 0.02,
+      });
+      noise({
+        type: 'lowpass',
+        freq: pistol ? 200 : 150,
+        gain: (pistol ? 0.16 : 0.24) * vol,
+        dur: 0.048,
+        atk: 0.0008,
+        pan,
+        delay,
+        verb: 0.025,
+      });
+      return;
+    }
     if (kind === 'rifle') {
       /* transient stack: a hard crack, a mid body and a chest thump. The
          sub-100Hz layer is what makes a shot feel like it has recoil. */

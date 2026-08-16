@@ -71,6 +71,9 @@ addEventListener('keydown', (e) => {
     if (e.code === 'F6') activateStreak(5);
   }
   if (e.code === 'KeyV') startMelee();
+  if (e.code === 'KeyF') tryInteractWeapon();
+  if (e.code === 'KeyG') throwGrenade('lethal');
+  if (e.code === 'KeyQ') throwGrenade('tactical');
   if (e.code === 'KeyB') {
     const w = WEAPONS[player.weapon];
     if (w.semiToggle) {
@@ -221,13 +224,15 @@ const _hitN = new THREE.Vector3();
 
 function currentSpreadMult() {
   const w = WEAPONS[player.weapon];
-  const speed = Math.hypot(player.vel.x, player.vel.z);
-  let s = w.spread;
-  s += (speed / 7) * w.moveSpread;
-  if (!player.onGround) s += w.airSpread;
-  s *= stanceSpreadMultiplier(w);
-  s *= lerp(1, w.adsSpread, player.adsEase);
-  return s;
+  return Gameplay.currentSpread(
+    w.spread,
+    w,
+    Math.hypot(player.vel.x, player.vel.z),
+    player.onGround,
+    !!player.prone,
+    !!player.crouch,
+    player.adsEase
+  );
 }
 function currentRecoilScale(w, adsEase = player.adsEase) {
   const adsStability = lerp(1, w.adsRecoil ?? 0.62, adsEase);
@@ -360,7 +365,7 @@ function fireWeapon() {
     showHitmark(killedSomething);
   }
 
-  SFX.gunshot(w.sound, 0, 0);
+  SFX.gunshot(w.sound, 0, 0, Gameplay.isSuppressed(w.attachments));
   alertToGunfire(w.noise || 34);
   w.spread = Math.min(w.spreadMax, w.spread + w.spreadShot);
 
@@ -482,6 +487,7 @@ function alertToGunfire(radius) {
 
 function damageEnemy(e, dmg, head, dir, point, killer?, creditPlayer?) {
   e.hp -= dmg;
+  e.tagRevealT = Gameplay.NAMEPLATE_HIT_REVEAL;
   e.flinch = Math.min(1, e.flinch + (head ? 0.9 : 0.55));
   e.alerted = true;
   e.lastSeen = 0;
@@ -512,6 +518,7 @@ function killEnemy(e, head, dir, killer, creditPlayer?) {
     if (!killer) noteKillstreak();
     if (head) G.headshots++;
     SFX.killChime();
+    dropLootFromEnemy(e);
     G.killFlash = 1;
     UI.killCount.textContent = G.kills;
     UI.edgeGlow.style.opacity = '0.9';
@@ -563,8 +570,8 @@ function damagePlayer(amount, fromPos, killer) {
     }
   }
   player.hp -= dmg;
-  G.dmgFlash = Math.min(0.72, G.dmgFlash + clamp(amount / 30, 0.22, 0.55));
-  player.shake = Math.min(1.6, player.shake + clamp(amount / 24, 0.18, 0.6));
+  G.dmgFlash = Math.min(0.72, G.dmgFlash + Gameplay.damageFlashAmount(amount));
+  player.shake = Math.min(1.6, player.shake + Gameplay.damageShakeAmount(amount));
   damageIndicator(fromPos);
   SFX.damageTaken();
   updateVitalsUI();

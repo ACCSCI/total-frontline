@@ -1,4 +1,12 @@
 export async function runMenuSmoke(page, check) {
+  /* The branded intro is a click-to-enter gate; dismiss it if this module is
+     used without the main smoke driver. */
+  const introHidden = await page.evaluate(() => {
+    const el = document.getElementById('intro');
+    return !el || el.classList.contains('hide');
+  });
+  if (!introHidden) await page.click('#intro');
+
   const root = await page.evaluate(() => ({
     navVisible: !document.getElementById('mainMenuNav').hidden,
     pagesHidden: [...document.querySelectorAll('.menuPage')].every((node) => node.hidden),

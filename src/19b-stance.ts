@@ -4,17 +4,15 @@ const PRONE_H = SHARED_MOVEMENT.stance.proneHeight;
 const PRONE_SPEED = SHARED_MOVEMENT.speeds.prone;
 
 function stanceSpreadMultiplier(w) {
-  if (player.prone) return Math.max(0.28, (w.crouchMult || 0.7) * 0.55);
-  if (player.crouch) return w.crouchMult || 0.7;
-  return 1;
+  return Gameplay.stanceSpreadMultiplier(!!player.prone, !!player.crouch, w.crouchMult || 0.7);
 }
 
 function stanceRecoilMultiplier() {
-  return player.prone ? 0.56 : player.crouch ? 0.8 : 1;
+  return Gameplay.stanceRecoilMultiplier(!!player.prone, !!player.crouch);
 }
 
 function stanceRecoveryMultiplier() {
-  return player.prone ? 1.65 : player.crouch ? 1.28 : 1;
+  return Gameplay.stanceRecoveryMultiplier(!!player.prone, !!player.crouch);
 }
 
 let lastStanceHud = '';

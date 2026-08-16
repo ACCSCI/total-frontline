@@ -214,6 +214,7 @@ export function makeEnemyTag(name: string, color = '#ff5145'): EnemyTag {
   const spr = new THREE.Sprite(mat);
   spr.scale.set(1.75, 0.52, 1);
   spr.position.y = 2.22;
+  spr.visible = false;
   const ctx = c.getContext('2d') as CanvasRenderingContext2D;
   const draw = (hp: number, alerted: boolean) => {
     void alerted;

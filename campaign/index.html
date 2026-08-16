@@ -9,6 +9,7 @@
   </head>
   <body>
     <canvas id="scene"></canvas>
+    <div id="cinematicGrade" aria-hidden="true"></div>
     <canvas id="screenRain"></canvas>
 
     <div id="hud" hidden>
@@ -30,27 +31,50 @@
           <div id="p0HealthBar"><div id="p0HealthFill"></div></div>
           <b id="p0Health">100</b>
         </div>
-        <div id="p0Loadout">
-          <div id="p0SlotA" class="p0Slot active">1 M4 卡宾枪</div>
-          <div id="p0SlotB" class="p0Slot">2 空</div>
-          <div id="p0Ammo">30 / 90</div>
-        </div>
         <div id="p0Throwables">
           <div id="p0Tac" class="p0Throw">Q 闪光 ×1</div>
           <div id="p0Lethal" class="p0Throw">G 手雷 ×1</div>
         </div>
         <div id="p0Stance">站立</div>
-        <div id="p0PickupPrompt" hidden></div>
       </div>
+      <div id="p0Loadout">
+        <div id="p0SlotA" class="p0Slot active"><b>1</b> M4 卡宾枪</div>
+        <div id="p0SlotB" class="p0Slot"><b>2</b> P-9 手枪</div>
+        <div id="p0Ammo">30 / 90</div>
+      </div>
+      <div id="radioLine"></div>
+      <div id="nvOverlay"></div>
+      <div id="p0PickupPrompt" hidden></div>
+      <div id="p0Toast" hidden></div>
+      <div id="failBanner" hidden>
+        <div class="t">任务失败</div>
+        <div class="s">你已被发现</div>
+      </div>
+      <div id="p0LowHp"></div>
       <div id="p0Flash"></div>
       <div id="p0Damage"></div>
+      <div id="p0DmgDirs"></div>
       <div id="p0Hitmark"><i></i><i></i><i></i><i></i></div>
 
-      <div id="cutsceneBars" hidden><div id="barTop"></div><div id="barBottom"></div><div id="cutsceneText"></div></div>
+      <div id="cgFade" aria-hidden="true"></div>
+    <div id="cutsceneBars" hidden><div id="barTop"></div><div id="barBottom"></div><div id="cutsceneText"></div></div>
 
       <div id="hint">
-        <div>单击进入战场 · WASD 移动 · SHIFT 疾跑 · ALT 蹲伏 · Z 卧倒</div>
-        <div>左键射击 · 右键瞄准 · R 换弹 · SPACE 跳跃 · 沿河谷推进至公路桥</div>
+        <div>单击进入战场 · WASD 移动 · SHIFT 疾跑 · C 蹲伏 · Z 卧倒 · V 战术刀背刺</div>
+        <div>N 夜视 · 伐木道可潜行可交火 · F 解救 VEGA / 爆破油罐</div>
+      </div>
+
+      <div id="scope">
+        <div class="lens"></div>
+        <div class="shade"></div>
+        <div class="retWrap">
+          <i class="ret h hL"></i><i class="ret h hR"></i>
+          <i class="ret v vT"></i><i class="ret v vB"></i>
+          <i class="ret thin hIn"></i><i class="ret thin hIn hInR"></i>
+          <i class="ret thin vIn"></i><i class="ret thin vIn vInB"></i>
+          <i class="center"></i>
+        </div>
+        <div class="breath" id="breathTag">SHIFT 屏息</div>
       </div>
 
       <canvas id="cross"></canvas>
@@ -64,6 +88,8 @@
       <div id="loadingSub">P0 技术验证 · 全新线性地图 · 即时演算过场 · glTF 流式加载</div>
     </div>
 
+    <div id="studioCredit">gamesvibe.app 巨献</div>
+
     <div id="introOverlay" hidden>
       <div id="introPrompt">单击进入任务简报</div>
       <div id="introType">
@@ -71,12 +97,22 @@
       </div>
     </div>
 
+    <div id="pause">
+      <div class="t">已暂停</div>
+      <div class="s">ESC 或点击空白继续</div>
+      <label class="setting" id="sprintReloadSettingWrap">
+        <input id="sprintReloadSetting" type="checkbox" />疾跑打断换弹
+      </label>
+      <button type="button" id="resumeBtn">继续任务</button>
+      <button type="button" id="quitBtn">返回主菜单</button>
+    </div>
+
     <div id="complete" hidden>
       <div class="panel">
-        <div class="eyebrow">P0 GRAYBOX COMPLETE</div>
-        <h1>抵达公路桥</h1>
-        <p>线性关卡、实时 CG、WebGPU 渲染与 glTF 流式加载已全部跑通。</p>
-        <button id="restartBtn" type="button">重新进入战场</button>
+        <div class="eyebrow">NIGHTFALL · TO BE CONTINUED</div>
+        <h1>未完待续</h1>
+        <p>VEGA 与通讯模块已经撤出，但云层里那双红眼仍锁着车队。</p>
+        <button id="restartBtn" type="button">点击返回主菜单</button>
       </div>
     </div>
 
@@ -84,7 +120,7 @@
       <div class="dpHead">地图调试模式 <b id="debugState">OFF</b></div>
       <div id="debugSelected">未选中物体</div>
       <div id="debugInfo"></div>
-      <div class="dpHint">F2 开关 · 左键点选 · 滚轮/PageUp/PageDown 调高度 · L 输出调整日志</div>
+      <div class="dpHint">F3 开关 · F1/F2 前后检查点 · 左键点选 · 滚轮/PageUp/PageDown 调高度 · L 输出调整日志</div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

@@ -7,8 +7,9 @@
     "build": "npm run build:legacy && npm run build:campaign",
     "build:legacy": "node scripts/build.mjs",
     "build:campaign": "npm --prefix campaign run build",
+    "test:mission01": "bun scripts/test-mission01.mjs",
     "typecheck": "npm run typecheck:legacy && npm run typecheck:campaign",
-    "typecheck:legacy": "tsc --project tsconfig.json --noEmit",
+    "typecheck:legacy": "node scripts/generate-gameplay.mjs && tsc --project tsconfig.json --noEmit",
     "typecheck:campaign": "npm --prefix campaign run typecheck",
     "check:lines": "bun scripts/check-file-lines.mjs",
     "check:migration": "bun scripts/check-migration.mjs",
@@ -18,7 +19,8 @@
     "serve": "python -m http.server 8123 --directory dist",
     "serve:legacy": "python -m http.server 8123 --directory dist",
     "serve:campaign": "npm --prefix campaign run preview",
-    "verify": "npm run typecheck && npm run build && bun scripts/check-migration.mjs && bun scripts/check-alignment.mjs"
+    "verify": "npm run typecheck && npm run build && bun scripts/check-migration.mjs && bun scripts/check-alignment.mjs",
+    "perf:campaign": "npm --prefix campaign run perf"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",

@@ -67,6 +67,13 @@ check(
 );
 check(legacyMovement.includes('SHARED_MOVEMENT'), 'generated legacy movement bridge exists');
 check(legacyWeapons.includes('SHARED_WEAPON_BASE'), 'generated legacy weapon bridge exists');
+const legacyGameplay = await read('../src/generated-gameplay.ts');
+const legacyPlayerUpdate = await read('../src/23-player-update.ts');
+check(legacyGameplay.includes('const Gameplay'), 'generated legacy gameplay bridge exists');
+check(
+  legacyPlayerUpdate.includes('Gameplay.stepLocomotion'),
+  'legacy player update steps the shared locomotion layer'
+);
 check(
   campaignRules.includes('../../shared/weapons.json') ||
     campaignWeaponDefs.includes('../../shared/weapons.json'),
@@ -87,6 +94,16 @@ check(
 check(
   campaignPlayer.includes('../../shared/movement.json'),
   'campaign player consumes shared movement'
+);
+const campaignCombatUtils = await read('../campaign/src/combat-utils.ts');
+check(
+  campaignPlayer.includes('../../shared/gameplay'),
+  'campaign player steps the shared locomotion layer'
+);
+check(campaignRules.includes('../../shared/gameplay'), 'campaign rules consume shared reload/fire');
+check(
+  campaignCombatUtils.includes('../../shared/gameplay'),
+  'campaign AI consumes the shared combat layer'
 );
 
 check(await exists('../dist/index.html'), 'legacy build output exists');

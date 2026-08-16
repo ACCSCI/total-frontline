@@ -54,10 +54,14 @@ const player: any = {
   ads: false,
   adsK: 0,
   adsEase: 0,
+  scoped: false,
   breath: 0,
   breathHeld: false,
   breathLock: false,
   swayT: 0,
+  swayAmp: 1,
+  scopeSwayX: 0,
+  scopeSwayY: 0,
   jumpsLeft: 0,
   spaceEdge: false,
   mantleT: 0,
@@ -98,6 +102,8 @@ const UI: Record<string, any> = {
   wmode: $('wmode'),
   wicon: $('wicon'),
   reloadHint: $('reloadHint'),
+  throwTac: $('throwTac'),
+  throwLethal: $('throwLethal'),
   timer: $('timer'),
   killCount: $('killCount'),
   missionObj: $('missionObj'),
@@ -120,6 +126,7 @@ const UI: Record<string, any> = {
   retWrap: $('retWrap'),
   breathTag: $('breathTag'),
   comms: $('comms'),
+  lootPrompt: $('lootPrompt'),
   _scopeK: -1,
   _crossHidden: false,
   _breathTip: null,
@@ -295,10 +302,13 @@ for (let i = 0; i < 5; i++) {
 }
 let dmgHead = 0;
 function damageIndicator(worldPos) {
-  const dx = worldPos.x - camera.position.x,
-    dz = worldPos.z - camera.position.z;
-  const angToSrc = Math.atan2(dx, dz); // world bearing
-  const rel = angToSrc - (player.yaw + PI); // relative to view forward
+  const rel = Gameplay.damageBearing(
+    worldPos.x,
+    worldPos.z,
+    camera.position.x,
+    camera.position.z,
+    player.yaw
+  );
   const a = DMG_ARCS[dmgHead];
   dmgHead = (dmgHead + 1) % DMG_ARCS.length;
   a.el.style.transform = `rotate(${-rel}rad)`;
@@ -317,33 +327,10 @@ function updateDmgArcs(dt) {
    never move. All dimensions below are CSS pixels; drawCrosshair converts them
    to whole device pixels so nothing ever straddles half a pixel.
    ========================================================================= */
-const XH: any = {
-  inGap: 1,
-  inLen: 4,
-  inThick: 2, // inner marks, measured out from centre
-  outGap: 2,
-  outLen: 3,
-  outThick: 2, // outer marks, measured on from the inner marks at rest
-  outline: 1, // black keyline
-  maxSpread: 12, // ceiling on the dynamic part
-  /* Movement error is deliberately small. There are only 2px of clear air
-     between the inner and outer marks, so anything past about 1.5px of bloom
-     runs the two together into one long tick. Walking should still read as two
-     marks; sprinting, jumping and firing are the states allowed to fuse. */
-  baseScale: 105, // px per radian: each weapon's base cone has its own resting size
-  reloadErr: 2.0,
-  fireScale: 240, // px per radian of accumulated weapon spread
-  fireHold: 0.11, // firing term stays on this long past a round —
-  // just over the 0.086s between rifle rounds
-  fallRate: 20, // e-fold rate; 3/20 puts the return at the 0.15s asked for
-  dpr: 1,
-  cx: 0,
-  cy: 0,
-  _last: -1,
-};
-/* Sized off the furthest the inner marks can travel, so the cap and the canvas
-   can never disagree and clip an arm at full bloom. */
-XH.size = 2 * Math.ceil(XH.inGap + XH.maxSpread + XH.inLen + XH.outline) + 8;
+const XH: any = Object.assign(
+  { dpr: 1, cx: 0, cy: 0, _last: -1, size: Gameplay.crosshairCanvasSize() },
+  Gameplay.CROSSHAIR
+);
 
 let crossSpread = 0,
   crossShots = 0,
@@ -372,73 +359,41 @@ function layoutCrosshair() {
   drawCrosshair(XH._last);
 }
 
-/** @param iA inner gap in whole device pixels, already quantised by the caller */
 function drawCrosshair(iA) {
-  const cv = UI.cross,
-    ctx = UI.cctx,
-    d = XH.dpr,
-    cx = XH.cx,
-    cy = XH.cy;
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  const u = (v) => Math.max(1, Math.round(v * d));
-  const o = Math.max(1, Math.round(XH.outline * d));
-  /* The outer marks are pinned to where the inner marks sit at rest, so they
-     answer to neither fire nor movement however far the inner ones travel. */
-  const oA = Math.round((XH.inGap + XH.inLen + XH.outGap) * d);
-
-  /* gap, length, thickness, and whether the keyline closes on the inward end.
-     The inner marks leave that end open deliberately: across a 1px centre gap
-     a closed keyline meets itself in the middle and reads as exactly the centre
-     dot this crosshair is specified not to have. */
-  const arms = [
-    [iA, u(XH.inLen), u(XH.inThick), 0],
-    [oA, u(XH.outLen), u(XH.outThick), 1],
-  ];
-
-  /* Every keyline first, then every white mark. Done arm by arm, the next
-     arm's outline would bite into white already laid down. */
-  for (let pass = 0; pass < 2; pass++) {
-    ctx.fillStyle = pass ? 'rgba(255,255,255,.97)' : 'rgba(0,0,0,.88)';
-    const kf = pass ? 0 : o; // grow past the far end
-    for (const [a, len, t, near] of arms) {
-      const kn = pass ? 0 : o * near; // ...and past the near end
-      const thin = t + (pass ? 0 : 2 * o); // across the mark
-      const long = len + kf + kn; // along it
-      const off = (t >> 1) + (pass ? 0 : o);
-      ctx.fillRect(cx - off, cy - a - len - kf, thin, long);
-      ctx.fillRect(cx - off, cy + a - kn, thin, long);
-      ctx.fillRect(cx - a - len - kf, cy - off, long, thin);
-      ctx.fillRect(cx + a - kn, cy - off, long, thin);
-    }
-  }
+  Gameplay.drawCrosshair(
+    UI.cctx,
+    {
+      dpr: XH.dpr,
+      cx: XH.cx,
+      cy: XH.cy,
+      width: UI.cross.width,
+      height: UI.cross.height,
+    },
+    iA
+  );
 }
 
 function updateCrosshair(dt) {
   syncHitmarkToAim();
   const w = WEAPONS[player.weapon];
   const speed = Math.hypot(player.vel.x, player.vel.z);
-  let target =
-    (w.spreadBase + (speed / 7) * w.moveSpread + (player.onGround ? 0 : w.airSpread)) *
-    XH.baseScale * stanceSpreadMultiplier(w);
-  if (player.reloadT > 0) target += XH.reloadErr;
-
-  /* While rounds are still going out, follow the weapon's real accumulated
-     spread: that is what the bullets are doing, and it climbs through a spray
-     exactly the way the reticle should. The term is dropped the moment firing
-     stops rather than tracking the weapon's own recovery, which runs most of a
-     second and would leave the crosshair hanging open long after the player let
-     go. A restart rewinds the shot counter, which must not read as a shot. */
   crossFireT = Math.max(0, crossFireT - dt);
   if (G.shots !== crossShots) {
     if (G.shots > crossShots) crossFireT = XH.fireHold;
     crossShots = G.shots;
   }
-  if (crossFireT > 0) target += (w.spread - w.spreadBase) * XH.fireScale * stanceSpreadMultiplier(w);
-
-  target *= lerp(1, 0.45, player.adsEase);
-  target = clamp(target, 0, XH.maxSpread);
-  /* Straight out to the floor, and back to it over 0.15s. */
-  crossSpread = target > crossSpread ? target : damp(crossSpread, target, XH.fallRate, dt);
+  const target = Gameplay.crosshairTarget({
+    baseSpread: w.spreadBase,
+    moveSpread: w.moveSpread,
+    speed,
+    airSpread: player.onGround ? 0 : w.airSpread,
+    stanceSpread: stanceSpreadMultiplier(w),
+    adsEase: player.adsEase,
+    reloading: player.reloadT > 0,
+    firing: crossFireT > 0,
+    spread: w.spread,
+  });
+  crossSpread = Gameplay.stepCrosshairSpread(crossSpread, target, dt);
 
   const iA = Math.round((XH.inGap + crossSpread) * XH.dpr);
   if (iA !== XH._last) {
@@ -447,7 +402,7 @@ function updateCrosshair(dt) {
   }
 
   /* scope overlay owns the screen centre once it's up */
-  const scopeK = w.scope ? clamp((player.adsEase - 0.45) / 0.4, 0, 1) : 0;
+  const scopeK = Gameplay.scopeBlend(player.adsEase, !!w.scope);
   if (scopeK !== UI._scopeK) {
     UI._scopeK = scopeK;
     UI.scope.style.opacity = scopeK;
@@ -456,12 +411,18 @@ function updateCrosshair(dt) {
     vmRoot.visible = scopeK < 0.92;
   }
   /* The Juggernaut braces a sightless minigun; its hip reticle stays visible. */
-  const crossHidden = (player.adsEase > 0.12 && !w.bracedAim) || !!G.gunship?.controlled;
+  const crossHidden =
+    Gameplay.adsHidesCrosshair(player.adsEase, !!w.bracedAim) || !!G.gunship?.controlled;
   if (crossHidden !== UI._crossHidden) {
     UI._crossHidden = crossHidden;
     UI.cross.classList.toggle('hidden', crossHidden);
   }
-  const showBreath = scopeK > 0.5 && !player.breathLock && player.breath <= 0 && !player.breathHeld;
+  const showBreath = Gameplay.showBreathHint(
+    scopeK,
+    player.breathLock,
+    player.breath,
+    player.breathHeld
+  );
   if (showBreath !== UI._breathTip) {
     UI._breathTip = showBreath;
     UI.breathTag.classList.toggle('on', showBreath);

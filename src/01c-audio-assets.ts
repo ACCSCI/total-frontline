@@ -25,6 +25,13 @@ const AUDIO_ASSET_MANIFEST = {
     lmg: 'assets/audio/weapons/layers/lmg-transient.ogg',
     vector: 'assets/audio/weapons/layers/vector-transient.ogg',
     p90: 'assets/audio/weapons/layers/p90-transient.ogg',
+    rifleSuppressed: 'assets/audio/weapons/layers/rifle-suppressed.ogg',
+    pistolSuppressed: 'assets/audio/weapons/layers/pistol-suppressed.ogg',
+    p90Suppressed: 'assets/audio/weapons/layers/p90-suppressed.ogg',
+    vectorSuppressed: 'assets/audio/weapons/layers/vector-suppressed.ogg',
+    shotgunSuppressed: 'assets/audio/weapons/layers/shotgun-suppressed.ogg',
+    sniperSuppressed: 'assets/audio/weapons/layers/sniper-suppressed.ogg',
+    lmgSuppressed: 'assets/audio/weapons/layers/lmg-suppressed.ogg',
     rifleMech: 'assets/audio/weapons/layers/rifle-mech.ogg',
     pistolMech: 'assets/audio/weapons/layers/pistol-mech.ogg',
     lmgMech: 'assets/audio/weapons/layers/lmg-mech.ogg',
@@ -58,7 +65,10 @@ const AUDIO_ASSET_MANIFEST = {
     airstrike: 'assets/audio/voice/airstrike-inbound.mp3',
   },
   music: 'assets/audio/music/frontline-loop.mp3',
-  menuMusic: 'assets/audio/music/main-menu-theme.mp3',
+  menuMusicOptions: [
+    'assets/audio/music/main-menu-theme-epic-1.mp3',
+    'assets/audio/music/main-menu-theme-epic-3.mp3',
+  ],
 };
 
 (() => {
@@ -98,7 +108,9 @@ const AUDIO_ASSET_MANIFEST = {
     ([key, path]) => [`voice.${key}`, path]
   );
   media.push(['music.frontline', AUDIO_ASSET_MANIFEST.music]);
-  media.push(['music.menu', AUDIO_ASSET_MANIFEST.menuMusic]);
+  AUDIO_ASSET_MANIFEST.menuMusicOptions.forEach((path, i) => {
+    media.push([`music.menu.${i}`, path]);
+  });
 
   async function loadOne([key, path]: [string, string]) {
     try {
@@ -110,7 +122,7 @@ const AUDIO_ASSET_MANIFEST = {
       buffers.set(key, decoded);
       failures.delete(key);
       if (key === 'music.frontline') startMusic();
-      if (key === 'music.menu') startMenuMusic();
+      if (key.startsWith('music.menu.')) startMenuMusic();
       if (
         pendingVoice?.key === key.slice(6) &&
         performance.now() - pendingVoice.at < 2600
@@ -251,8 +263,9 @@ const AUDIO_ASSET_MANIFEST = {
     return '';
   }
 
-  function playWeapon(kind, pan, dist) {
-    const transient = `layer.${kind}`;
+  function playWeapon(kind, pan, dist, suppressed) {
+    if (suppressed && (kind === 'ak' || kind === 'rifle')) kind = 'rifle';
+    const transient = suppressed ? `layer.${kind}Suppressed` : `layer.${kind}`;
     /* Imported reports are already full game mixes. Missing one falls back to
        the complete procedural report instead of playing a partial layer. */
     if (!buffers.has(transient)) return false;
@@ -337,8 +350,13 @@ const AUDIO_ASSET_MANIFEST = {
   }
 
   function startMenuMusic() {
-    if (!menuMusicWanted || menuMusicSource || !buffers.has('music.menu')) return;
-    const source = playBuffer('music.menu', { gain: 0.3, bus: 'music' }) as AudioBufferSourceNode;
+    if (!menuMusicWanted || menuMusicSource) return;
+    const keys = AUDIO_ASSET_MANIFEST.menuMusicOptions
+      .map((_, i) => `music.menu.${i}`)
+      .filter((key) => buffers.has(key));
+    if (!keys.length) return;
+    const key = keys[(Math.random() * keys.length) | 0];
+    const source = playBuffer(key, { gain: 0.3, bus: 'music' }) as AudioBufferSourceNode;
     if (!source) return;
     source.loop = true;
     source.loopStart = 0;
@@ -378,8 +396,9 @@ const AUDIO_ASSET_MANIFEST = {
     procedural.init();
     scheduleLoad();
   };
-  SFX.gunshot = (kind, pan, dist) => {
-    if (!playWeapon(kind, pan, dist)) procedural.gunshot(kind, pan, dist);
+  SFX.gunshot = (kind, pan, dist, suppressed) => {
+    if (!playWeapon(kind, pan, dist, suppressed))
+      procedural.gunshot(kind, pan, dist, suppressed);
   };
   SFX.footstep = (volume, pan) => {
     if (!playImpact('footstep', 0.42 * volume, pan)) procedural.footstep(volume, pan);

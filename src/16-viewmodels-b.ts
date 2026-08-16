@@ -55,6 +55,11 @@ function buildPistol() {
   part(G, B(0.02, 0.02, 0.026), GUNMETAL, 0, 0.006, 0.062);
   part(G, B(0.034, 0.01, 0.04), POLYMER, 0, -0.01, 0.058);
 
+  const suppressor = new THREE.Group();
+  suppressor.visible = false;
+  G.add(suppressor);
+  part(suppressor, CYLZ(0.016, 0.0148, 0.092, 12), GUNMETAL, 0, 0.008, -0.238);
+  part(suppressor, TUBEZ(0.0164, 0.01, 12), POLYMER, 0, 0.008, -0.21);
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.008, -0.185);
   G.add(muzzle);
@@ -88,6 +93,7 @@ function buildPistol() {
     adsPos: new THREE.Vector3(0.0006, -0.0448, -0.4935),
     adsRot: new THREE.Vector3(0, 0, 0),
     adsRef: 0.6235,
+    attachmentNodes: { muzzle: { suppressor } },
   }; // front post
 }
 

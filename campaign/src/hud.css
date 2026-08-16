@@ -44,10 +44,14 @@
 }
 
 #p0Loadout {
-  min-width: 280px;
-  padding: 10px 12px;
+  position: absolute;
+  right: 26px;
+  bottom: 150px;
+  min-width: 220px;
+  padding: 8px 10px;
   background: rgba(6, 10, 15, 0.55);
-  border-left: 2px solid rgba(140, 190, 230, 0.55);
+  border-right: 2px solid rgba(255, 179, 64, 0.55);
+  text-align: right;
 }
 
 .p0Slot {
@@ -64,6 +68,7 @@
 
 .p0Slot.active {
   color: #ffd9a0;
+  border-color: rgba(255, 179, 64, 0.7);
 }
 
 #p0Ammo {
@@ -108,19 +113,103 @@
   border-left-color: rgba(255, 183, 77, 0.85);
 }
 
+#radioLine {
+  position: absolute;
+  left: 24px;
+  bottom: 58px;
+  max-width: 46vw;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #c8d8c4;
+  text-shadow: 0 1px 6px #000;
+  pointer-events: none;
+}
+
+#nvOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse at center, rgba(46, 210, 86, 0.16), rgba(0, 42, 12, 0.55)),
+    repeating-linear-gradient(0deg, rgba(140, 255, 170, 0.06) 0 1px, transparent 1px 3px);
+  mix-blend-mode: screen;
+  transition: opacity 0.18s ease;
+}
+
+#nvOverlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 58%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+#nvOverlay.on {
+  opacity: 1;
+}
+
+#p0Toast {
+  position: absolute;
+  left: 50%;
+  bottom: 24%;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 7px 16px;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  color: #d8f0c8;
+  text-shadow: 0 1px 8px #000;
+  background: rgba(5, 12, 8, 0.62);
+  border: 1px solid rgba(120, 200, 130, 0.5);
+  pointer-events: none;
+}
+
+#failBanner {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(18, 2, 2, 0.62);
+  pointer-events: none;
+}
+
+#failBanner[hidden] {
+  display: none !important;
+}
+
+#failBanner .t {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  color: #ff6a5e;
+}
+
+#failBanner .s {
+  margin-top: 12px;
+  font-size: 13px;
+  letter-spacing: 0.22em;
+  color: rgba(255, 210, 200, 0.75);
+}
+
 #p0PickupPrompt {
   position: absolute;
   left: 50%;
-  bottom: 34%;
+  bottom: 18%;
   transform: translateX(-50%);
-  padding: 8px 16px;
+  z-index: 4;
+  padding: 8px 18px;
   font-size: 14px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   color: #ffe2b0;
   text-shadow: 0 1px 8px #000;
-  background: rgba(5, 9, 14, 0.55);
+  background: rgba(5, 9, 14, 0.58);
   border: 1px solid rgba(255, 183, 77, 0.5);
   white-space: nowrap;
+  pointer-events: none;
 }
 
 #p0Flash {
@@ -134,4 +223,192 @@
 
 #p0Flash.on {
   opacity: 1;
+}
+
+#scope {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.08s linear;
+}
+#scope.on {
+  opacity: 1;
+}
+#scope .shade {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0) 0 36vmin,
+    rgba(0, 0, 0, 0.55) 36vmin 36.7vmin,
+    rgba(0, 0, 0, 0.99) 37.4vmin
+  );
+}
+#scope .lens {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 72vmin;
+  height: 72vmin;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 9vmin 2vmin rgba(0, 0, 0, 0.72),
+    inset 0 0 1.6vmin 0.4vmin rgba(150, 180, 200, 0.14),
+    0 0 0 0.35vmin rgba(0, 0, 0, 0.9);
+}
+#scope .retWrap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  filter: drop-shadow(0 0 1px rgba(215, 230, 240, 0.55));
+}
+#scope .ret {
+  position: absolute;
+  background: rgba(8, 10, 12, 0.92);
+}
+#scope .ret.h {
+  height: 1px;
+  width: 28vmin;
+  top: -0.5px;
+}
+#scope .ret.hL {
+  left: -36vmin;
+}
+#scope .ret.hR {
+  left: 8vmin;
+}
+#scope .ret.v {
+  width: 1px;
+  height: 28vmin;
+  left: -0.5px;
+}
+#scope .ret.vT {
+  top: -36vmin;
+}
+#scope .ret.vB {
+  top: 8vmin;
+}
+#scope .ret.thin {
+  background: rgba(8, 10, 12, 0.8);
+}
+#scope .ret.hIn {
+  height: 1px;
+  width: 6.2vmin;
+  top: -0.5px;
+  left: -8vmin;
+}
+#scope .ret.hInR {
+  left: 1.8vmin;
+}
+#scope .ret.vIn {
+  width: 1px;
+  height: 6.2vmin;
+  left: -0.5px;
+  top: -8vmin;
+}
+#scope .ret.vInB {
+  top: 1.8vmin;
+}
+#scope .center {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  left: -1px;
+  top: -1px;
+  background: rgba(255, 70, 50, 0.9);
+  border-radius: 50%;
+}
+#scope .breath {
+  position: absolute;
+  left: 50%;
+  bottom: 8vmin;
+  transform: translateX(-50%);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  color: rgba(223, 230, 236, 0.5);
+  opacity: 0;
+}
+#scope .breath.on {
+  opacity: 1;
+}
+
+#pause {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background: rgba(3, 5, 8, 0.76);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+#pause.on {
+  display: flex;
+}
+
+#pause .t {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+}
+
+#pause .s {
+  margin-top: 12px;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: rgba(223, 230, 236, 0.5);
+}
+
+#pause .setting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 10px 14px;
+  border: 1px solid rgba(223, 230, 236, 0.2);
+  background: rgba(223, 230, 236, 0.05);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: #dfe6ec;
+  cursor: pointer;
+}
+
+#pause .setting input {
+  accent-color: #ffb340;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+#pause button {
+  margin-top: 18px;
+  padding: 10px 26px;
+  border: 1px solid rgba(255, 183, 77, 0.55);
+  background: transparent;
+  color: #ffd79a;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+}
+
+#pause button:hover {
+  background: rgba(255, 183, 77, 0.12);
+}
+
+#pause #quitBtn {
+  margin-top: 10px;
+  border-color: rgba(223, 230, 236, 0.28);
+  color: rgba(223, 230, 236, 0.8);
+}
+
+#pause #quitBtn:hover {
+  background: rgba(223, 230, 236, 0.1);
 }

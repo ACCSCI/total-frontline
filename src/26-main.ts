@@ -27,6 +27,7 @@ applyMap(MAP_YARD);
 WEAPONS[0].vm.group.visible = true;
 updateVitalsUI();
 updateAmmoUI();
+updateThrowHud();
 layoutCrosshair();
 UI.boot.classList.add('hide');
 
@@ -52,6 +53,8 @@ function frame(now) {
       updatePlayer(dt);
       updateViewmodel(dt, mdx, mdy);
       updatePlayerFiring(dt);
+      updateThrowables(dt);
+      updateLoot(dt);
     } else {
       mouseDX = mouseDY = 0;
     }
@@ -180,6 +183,10 @@ function frame(now) {
   UI.lowhp.style.opacity = String(pulse * 0.8);
   G.killFlash = damp(G.killFlash, 0, 7, dt);
 
+  /* The menu plate is rendered through the same post chain but should keep
+     bloom restrained: its metal highlights would otherwise smudge the UI. */
+  brightMat.uniforms.threshold.value = MENU_SHOWCASE?.active ? 2.0 : 0.95;
+
   compMat.uniforms.time.value = now * 0.001;
   compMat.uniforms.dmg.value = G.dmgFlash;
   compMat.uniforms.low.value = pulse * 0.55;
@@ -190,7 +197,12 @@ function frame(now) {
   renderActivePrism();
   renderer.setRenderTarget(worldRT);
   renderer.clear(true, true, true);
-  renderer.render(scene, camera);
+  if (MENU_SHOWCASE?.active) {
+    updateMenuShowcase(dt);
+    renderer.render(MENU_SHOWCASE.scene, MENU_SHOWCASE.camera);
+  } else {
+    renderer.render(scene, camera);
+  }
   copyMat.uniforms.tDiffuse.value = worldRT.texture;
   blit(copyMat, sceneRT);
   if (G.started && !G.gunship?.controlled) {

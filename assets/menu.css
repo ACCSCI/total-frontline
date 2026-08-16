@@ -1,6 +1,6 @@
 #menuGpu{display:none;position:absolute;inset:0;width:100%;height:100%;z-index:18;pointer-events:none;background:radial-gradient(circle at 72% 38%,#17202a 0,#090d12 46%,#030507 100%)}
 body.menu-open #menuGpu{display:block}
-#startScreen{align-items:flex-start;justify-content:center;padding:clamp(14px,3.5vh,40px) clamp(28px,7vw,110px);background:linear-gradient(180deg,rgba(3,5,7,.74) 0%,rgba(3,5,7,.08) 28%,rgba(3,5,7,.08) 80%,rgba(3,5,7,.64) 100%),linear-gradient(95deg,rgba(4,6,9,.96) 0%,rgba(4,6,9,.88) 34%,rgba(4,6,9,.48) 64%,rgba(4,6,9,.12) 100%)}
+#startScreen{align-items:flex-start;justify-content:center;padding:clamp(14px,3.5vh,40px) clamp(28px,7vw,110px);background:linear-gradient(180deg,rgba(3,5,7,.55) 0%,rgba(3,5,7,.02) 30%,rgba(3,5,7,.02) 78%,rgba(3,5,7,.45) 100%),linear-gradient(95deg,rgba(4,6,9,.72) 0%,rgba(4,6,9,.35) 38%,rgba(4,6,9,.06) 68%,rgba(4,6,9,.02) 100%)}
 #startScreen .col{display:flex;flex-direction:column;align-items:flex-start;width:min(820px,72vw);max-height:100%;position:relative;z-index:1}
 #startScreen .title,#startScreen .eyebrow{text-align:left}#startScreen .rule{margin:clamp(10px,2.6vh,26px) 0 clamp(10px,2.4vh,24px)}
 .eyebrow{font-size:11px;letter-spacing:.55em;color:var(--amber);font-weight:700;margin-bottom:clamp(6px,1.4vh,14px)}
@@ -24,3 +24,6 @@ body.menu-open #menuGpu{display:block}
 .campaignPlate{padding:28px;border:1px solid rgba(150,170,185,.2);border-left:3px solid var(--amber);background:linear-gradient(105deg,rgba(11,16,21,.9),rgba(22,17,12,.64))}.campaignPlate b{display:block;font-size:25px;letter-spacing:.16em;color:#fff}.campaignPlate p{max-width:560px;margin-top:12px;color:rgba(223,230,236,.55);font-size:10px;letter-spacing:.14em;line-height:1.9}.campaignPlate .status{display:inline-block;margin-top:20px;padding:6px 10px;border:1px solid rgba(255,179,64,.42);color:var(--amber);font:700 8px ui-monospace,Consolas,monospace;letter-spacing:.25em}
 .hint{margin-top:clamp(7px,1.5vh,15px);font-size:10px;letter-spacing:.2em;color:rgba(223,230,236,.34)}
 @media(max-width:760px){#startScreen{padding:20px}#startScreen .col{width:100%}#mainMenuNav{grid-template-columns:1fr}.menuEntry{min-height:78px}.attachRows{grid-template-columns:repeat(2,1fr)}.globalSetting{grid-template-columns:125px 1fr 48px}.maps{flex-direction:column}}
+
+#homeFx{display:none;position:absolute;inset:0;width:100%;height:100%;z-index:19;pointer-events:none}
+body.menu-open #homeFx{display:block}

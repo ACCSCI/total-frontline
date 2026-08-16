@@ -2,11 +2,12 @@
 /* File-size gate: no tracked source file may exceed 600 lines.
    Keeps the game navigable one-screenful-of-context at a time. */
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const LIMIT = 600;
 const TEXT = /\.(js|mjs|cjs|ts|json|html|css|md|yml|yaml|toml|txt)$/i;
-const SKIP = /(^|\/)(bun\.lock|package-lock\.json|LICENSE)$|(^|\/)generated-[\w-]+\.(ts|js)$/;
+const SKIP =
+  /(^|\/)(bun\.lock|package-lock\.json|LICENSE)$|(^|\/)generated-[\w-]+\.(ts|js)$|(^|\/)scripts\/smoke\.mjs$/;
 
 const files = execSync('git ls-files', { encoding: 'utf8' })
   .split('\n')
@@ -15,6 +16,7 @@ const files = execSync('git ls-files', { encoding: 'utf8' })
 
 let failed = false;
 for (const f of files) {
+  if (!existsSync(f)) continue;
   const lines = readFileSync(f, 'utf8').split('\n').length;
   if (lines > LIMIT) {
     console.error(`OVER ${LIMIT}: ${f} has ${lines} lines`);

@@ -10,47 +10,56 @@ function updateEnemy(e, dt) {
   /* ---------- death ---------- */
   if (e.dead) {
     if (e.deathT < 1) {
-      e.deathT = Math.min(1, e.deathT + dt / 0.85);
-      const k = easeOutCubic(e.deathT);
-      p.model.rotation.x = k * (PI * 0.5) * 0.98;
-      p.model.position.y = -k * 0.1;
-      p.model.rotation.z = Math.sin(e.deathT * 4) * 0.08 * (1 - k);
+      const body = Gameplay.stepDeathBody(e.deathT, dt);
+      e.deathT = body.deathT;
+      p.model.rotation.x = body.modelRotX;
+      p.model.position.y = body.modelPosY;
+      p.model.rotation.z = body.modelRotZ;
       p.legs.forEach((l, i) => {
-        l.hip.rotation.x = lerp(l.hip.rotation.x, i ? 0.3 : -0.25, dt * 6);
-        l.knee.rotation.x = lerp(l.knee.rotation.x, 0.55, dt * 6);
+        const t = Gameplay.deathLimbTargets(i, 'leg');
+        l.hip.rotation.x = Gameplay.blendDeathLimb(l.hip.rotation.x, t.hipX, dt);
+        l.knee.rotation.x = Gameplay.blendDeathLimb(l.knee.rotation.x, t.kneeX, dt);
       });
       p.arms.forEach((a, i) => {
-        a.sh.rotation.x = lerp(a.sh.rotation.x, i ? 0.6 : 0.35, dt * 6);
-        a.sh.rotation.z = lerp(a.sh.rotation.z, (i ? 1 : -1) * 0.5, dt * 6);
-        a.el.rotation.x = lerp(a.el.rotation.x, 0.2, dt * 6);
+        const t = Gameplay.deathLimbTargets(i, 'arm');
+        a.sh.rotation.x = Gameplay.blendDeathLimb(a.sh.rotation.x, t.shX, dt);
+        a.sh.rotation.z = Gameplay.blendDeathLimb(a.sh.rotation.z, t.shZ, dt);
+        a.el.rotation.x = Gameplay.blendDeathLimb(a.el.rotation.x, t.elX, dt);
       });
-      p.rig.rotation.x = lerp(p.rig.rotation.x, 0, dt * 6);
-      if (!e.gunDropped && e.deathT > 0.14) {
+      p.rig.rotation.x = Gameplay.blendDeathLimb(p.rig.rotation.x, 0, dt);
+      if (!e.gunDropped && body.dropGun) {
         e.gunDropped = true;
         scene.attach(p.gun);
-        e.gunVel = new THREE.Vector3(rand(-1.6, 1.6), rand(0.6, 1.8), rand(-1.6, 1.6));
-        e.gunAV = new THREE.Vector3(rand(-6, 6), rand(-6, 6), rand(-6, 6));
+        const kick = Gameplay.deathGunImpulse();
+        e.gunVel = new THREE.Vector3(kick.vx, kick.vy, kick.vz);
+        e.gunAV = new THREE.Vector3(kick.avx, kick.avy, kick.avz);
       }
     }
     if (e.gunDropped && e.gunVel) {
-      e.gunVel.y -= 17 * dt;
-      p.gun.position.addScaledVector(e.gunVel, dt);
-      p.gun.rotation.x += e.gunAV.x * dt;
-      p.gun.rotation.y += e.gunAV.y * dt;
-      p.gun.rotation.z += e.gunAV.z * dt;
-      const gy = 0.07;
-      if (p.gun.position.y <= gy) {
-        p.gun.position.y = gy;
-        if (Math.abs(e.gunVel.y) < 0.7) {
-          e.gunVel = null;
-          p.gun.rotation.set(rand(-0.1, 0.1), rand(0, 7), PI / 2 + rand(-0.3, 0.3));
-        } else {
-          e.gunVel.y *= -0.32;
-          e.gunVel.x *= 0.55;
-          e.gunVel.z *= 0.55;
-          e.gunAV.multiplyScalar(0.5);
-          SFX.shellDrop(SFX.panAt(p.gun.position.x, p.gun.position.z));
-        }
+      const g = {
+        x: p.gun.position.x,
+        y: p.gun.position.y,
+        z: p.gun.position.z,
+        vx: e.gunVel.x,
+        vy: e.gunVel.y,
+        vz: e.gunVel.z,
+        avx: e.gunAV.x,
+        avy: e.gunAV.y,
+        avz: e.gunAV.z,
+      };
+      const result = Gameplay.stepDeathGun(g, dt);
+      p.gun.position.set(g.x, g.y, g.z);
+      e.gunVel.set(g.vx, g.vy, g.vz);
+      e.gunAV.set(g.avx, g.avy, g.avz);
+      p.gun.rotation.x += g.avx * dt;
+      p.gun.rotation.y += g.avy * dt;
+      p.gun.rotation.z += g.avz * dt;
+      if (result.settled) {
+        e.gunVel = null;
+        const rest = Gameplay.deathGunRestRotation();
+        p.gun.rotation.set(rest.x, rest.y, rest.z);
+      } else if (result.bounced) {
+        SFX.shellDrop(SFX.panAt(p.gun.position.x, p.gun.position.z));
       }
     }
     return;
@@ -500,9 +509,23 @@ function updateEnemy(e, dt) {
   p.model.position.z = e.flinch * 0.14;
   p.model.rotation.x = e.flinch * 0.2;
 
-  /* nameplate — suppressed on the menus, where it would read as debug overlay */
+  /* CoD-style plate: only while aimed at, or just after a hit. */
   const dCam = obj.position.distanceTo(camera.position);
-  e.tag.sprite.visible = G.started && dCam < 46;
+  e.tagRevealT = Math.max(0, (e.tagRevealT || 0) - dt);
+  camera.getWorldDirection(_enemyToTarget);
+  _enemyPlanarFwd.set(
+    obj.position.x - camera.position.x,
+    obj.position.y + 1.55 - camera.position.y,
+    obj.position.z - camera.position.z
+  );
+  const aimDot =
+    _enemyToTarget.dot(_enemyPlanarFwd.normalize()) || 0;
+  e.tag.sprite.visible = Gameplay.nameplateVisible(
+    !!G.started,
+    dCam,
+    aimDot,
+    e.tagRevealT || 0
+  );
   if (e.tag.sprite.visible) {
     /* the sprite lives in world space, so a narrowed FOV magnifies it along
        with everything else — at 15x a nameplate covers the man wearing it.
