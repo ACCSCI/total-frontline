@@ -156,11 +156,14 @@ export function placeCrashWrecks(
       });
     snap();
     propSnaps.push(snap);
-    obstacles.push({ x: site.x, z: site.z, r: radius });
+    const hullTop = wreck.position.y + 1.3 * site.scale;
+    obstacles.push({ x: site.x, z: site.z, r: radius, topY: hullTop, climbR: 1.25 * site.scale });
     obstacles.push({
       x: site.x + Math.sin(site.yaw) * 2.4,
       z: site.z + Math.cos(site.yaw) * 2.4,
       r: radius * 0.7,
+      topY: wreck.position.y + 0.82 * site.scale,
+      climbR: 0.62 * site.scale,
     });
   }
 }

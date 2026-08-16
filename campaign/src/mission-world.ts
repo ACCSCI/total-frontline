@@ -37,9 +37,10 @@ function makeWaterBumpTexture() {
     const y = Math.random() * 128;
     const len = 4 + Math.random() * 16;
     const horizontal = Math.random() < 0.6;
-    g.strokeStyle = Math.random() > 0.5
-      ? `rgba(255,255,255,${0.12 + Math.random() * 0.2})`
-      : `rgba(0,0,0,${0.12 + Math.random() * 0.2})`;
+    g.strokeStyle =
+      Math.random() > 0.5
+        ? `rgba(255,255,255,${0.12 + Math.random() * 0.2})`
+        : `rgba(0,0,0,${0.12 + Math.random() * 0.2})`;
     g.lineWidth = 0.6 + Math.random() * 1.6;
     g.beginPath();
     if (horizontal) {
@@ -286,7 +287,10 @@ export function placeMissionSetDressing(
     opacity: 0.22,
     depthWrite: false,
   });
-  for (const [gx, gz, gw] of [[-2.6, -517, 3.6], [2.4, -523, 2.8]] as Array<[number, number, number]>) {
+  for (const [gx, gz, gw] of [
+    [-2.6, -517, 3.6],
+    [2.4, -523, 2.8],
+  ] as Array<[number, number, number]>) {
     const glint = new THREE.Mesh(new THREE.PlaneGeometry(gw, 0.16), glintMat);
     glint.rotation.x = -Math.PI / 2;
     glint.position.set(gx, groundAt(gx, gz) + 0.09, gz);
@@ -298,10 +302,18 @@ export function placeMissionSetDressing(
   const PEBBLES = 64;
   const BANK_GRASS = 140;
   const pebbleGeo = new THREE.IcosahedronGeometry(0.14, 0);
-  const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x7a837d, roughness: 0.72, metalness: 0.05 });
+  const pebbleMat = new THREE.MeshStandardMaterial({
+    color: 0x7a837d,
+    roughness: 0.72,
+    metalness: 0.05,
+  });
   const pebbles = new THREE.InstancedMesh(pebbleGeo, pebbleMat, PEBBLES);
   const bankGeo = new THREE.ConeGeometry(0.18, 0.55, 4);
-  const bankMat = new THREE.MeshStandardMaterial({ color: 0x3f7a40, roughness: 0.88, emissive: 0x061306 });
+  const bankMat = new THREE.MeshStandardMaterial({
+    color: 0x3f7a40,
+    roughness: 0.88,
+    emissive: 0x061306,
+  });
   const bankGrass = new THREE.InstancedMesh(bankGeo, bankMat, BANK_GRASS);
   const sm = new THREE.Matrix4();
   const sq = new THREE.Quaternion();
@@ -344,7 +356,11 @@ export function placeMissionSetDressing(
   // Bridge approach clutter: rusted drums and sandbags so the final run-up
   // doesn't read as an empty parking lot.
   const drumGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.95, 10);
-  const drumMat = new THREE.MeshStandardMaterial({ color: 0x5a3b2c, roughness: 0.6, metalness: 0.45 });
+  const drumMat = new THREE.MeshStandardMaterial({
+    color: 0x5a3b2c,
+    roughness: 0.6,
+    metalness: 0.45,
+  });
   const sandGeo = new THREE.BoxGeometry(0.85, 0.42, 0.5);
   const sandMat = new THREE.MeshStandardMaterial({ color: 0x4a4a3e, roughness: 0.95 });
   const approach = new THREE.Group();
@@ -357,6 +373,7 @@ export function placeMissionSetDressing(
     [2.8, -840],
     [-3.1, -850],
   ];
+  const clutterTops: Array<{ obstacle: LevelObstacle; mesh: THREE.Object3D; half: number }> = [];
   clutter.forEach(([cx, cz], i) => {
     if (i % 2) {
       const drum = new THREE.Mesh(drumGeo, drumMat);
@@ -365,7 +382,9 @@ export function placeMissionSetDressing(
       drum.castShadow = true;
       drum.userData.debugKind = 'decor';
       approach.add(drum);
-      obstacles.push({ x: cx, z: cz, r: 0.62 });
+      const obstacle = { x: cx, z: cz, r: 0.62 };
+      obstacles.push(obstacle);
+      clutterTops.push({ obstacle, mesh: drum, half: 0.475 });
     } else {
       const sandbag = new THREE.Mesh(sandGeo, sandMat);
       sandbag.position.set(cx, 0.23, cz);
@@ -373,7 +392,9 @@ export function placeMissionSetDressing(
       sandbag.castShadow = true;
       sandbag.userData.debugKind = 'decor';
       approach.add(sandbag);
-      obstacles.push({ x: cx, z: cz, r: 0.55 });
+      const obstacle = { x: cx, z: cz, r: 0.55 };
+      obstacles.push(obstacle);
+      clutterTops.push({ obstacle, mesh: sandbag, half: 0.21 });
     }
   });
   group.add(approach);
@@ -385,6 +406,12 @@ export function placeMissionSetDressing(
       mode: 'min',
     });
   snapApproach();
+  approach.updateMatrixWorld(true);
+  const topPos = new THREE.Vector3();
+  for (const c of clutterTops) {
+    c.mesh.getWorldPosition(topPos);
+    c.obstacle.topY = topPos.y + c.half;
+  }
   propSnaps.push(snapApproach);
 }
 
@@ -414,7 +441,12 @@ export function makeExfilVehicle(level: P0Level) {
   canvas.position.set(0, 2.15, -0.7);
   canvas.castShadow = true;
   g.add(canvas);
-  for (const [sx, sz] of [[-1.05, 1.8], [1.05, 1.8], [-1.05, -1.8], [1.05, -1.8]]) {
+  for (const [sx, sz] of [
+    [-1.05, 1.8],
+    [1.05, 1.8],
+    [-1.05, -1.8],
+    [1.05, -1.8],
+  ]) {
     const wheel = new THREE.Mesh(
       new THREE.CylinderGeometry(0.42, 0.42, 0.3, 10),
       new THREE.MeshStandardMaterial({ color: 0x111312, roughness: 0.9 })
@@ -474,7 +506,11 @@ export function makeModuleMarker(level: P0Level) {
 export function makeApcMesh() {
   const g = new THREE.Group();
   g.name = 'P0_APC';
-  const armor = new THREE.MeshStandardMaterial({ color: 0x2c3028, roughness: 0.66, metalness: 0.45 });
+  const armor = new THREE.MeshStandardMaterial({
+    color: 0x2c3028,
+    roughness: 0.66,
+    metalness: 0.45,
+  });
   const hull = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.15, 5.4), armor);
   hull.position.y = 0.85;
   hull.castShadow = true;
@@ -503,7 +539,12 @@ export function makeApcMesh() {
   barrel.position.set(0, 1.66, 1.35);
   barrel.castShadow = true;
   g.add(barrel);
-  for (const [sx, sz] of [[-1.05, 1.7], [1.05, 1.7], [-1.05, -1.7], [1.05, -1.7]]) {
+  for (const [sx, sz] of [
+    [-1.05, 1.7],
+    [1.05, 1.7],
+    [-1.05, -1.7],
+    [1.05, -1.7],
+  ]) {
     const wheel = new THREE.Mesh(
       new THREE.CylinderGeometry(0.4, 0.4, 0.28, 10),
       new THREE.MeshStandardMaterial({ color: 0x111312, roughness: 0.9 })
