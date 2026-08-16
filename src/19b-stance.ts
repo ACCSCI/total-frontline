@@ -27,5 +27,5 @@ function updateStanceUI() {
       ? '卧姿 // 最稳定 · Z 起身'
       : stance === 'crouch'
         ? '蹲姿 // 稳定 · Z 卧倒'
-        : '站姿 // ALT 蹲下 · Z 卧倒';
+        : '站姿 // C 蹲下 · Z 卧倒';
 }

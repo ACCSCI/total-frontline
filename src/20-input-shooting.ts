@@ -53,6 +53,7 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Digit3') selectGunshipWeapon(2);
     return;
   }
+  if (e.code === 'KeyC') player.crouch = !player.crouch;
   if (e.code === 'KeyR') startReload();
   if (e.code === 'Digit1') switchWeapon(0);
   if (e.code === 'Digit2') switchWeapon(1);

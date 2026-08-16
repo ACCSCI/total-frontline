@@ -184,7 +184,7 @@ function updatePlayer(dt) {
       sprint: shiftDown,
       jumpHeld: !!keys['Space'],
       jumpPressed,
-      crouch: !!(keys['AltLeft'] || keys['AltRight']),
+      crouch: !!player.crouch,
       pronePressed,
     },
     legacyWorld(),
