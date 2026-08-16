@@ -370,7 +370,7 @@ function moveSlide(
 /* ==== shared/gameplay/movement.ts ==== */
 
 const MANTLE_RISE = 1.95;
-const MANTLE_MIN = 0.45;
+const MANTLE_MIN = 0.4;
 const STEP_HEIGHT = 0.62;
 const RELOAD_MOVE_SCALE = 0.86;
 const ADS_MOVE_PENALTY = 0.4;
@@ -389,12 +389,12 @@ function findMantle(
     const px = state.pos.x + fx * reach;
     const pz = state.pos.z + fz * reach;
     const top = world.groundY(px, pz, feet + MANTLE_RISE);
-    if (top === null) continue;
+    if (top === null || !Number.isFinite(top)) continue;
     const rise = top - feet;
-    if (rise < MANTLE_MIN || rise > MANTLE_RISE) continue;
+    if (!Number.isFinite(rise) || rise < MANTLE_MIN || rise > MANTLE_RISE) continue;
     if (world.blocked(px, pz, top + 0.1, top + standHeight - 0.06, radius * 0.92)) continue;
-    const ahead = world.groundY(px + fx * 0.35, pz + fz * 0.35, top + 0.35);
-    if (ahead === null || ahead < top - 0.45) continue;
+    const ahead = world.groundY(px + fx * 0.2, pz + fz * 0.2, top + 0.35);
+    if (ahead === null || !Number.isFinite(ahead) || ahead < top - 0.45) continue;
     return { x: px + fx * 0.28, y: top + 0.02, z: pz + fz * 0.28 };
   }
   return null;
@@ -549,12 +549,18 @@ function stepLocomotion(
     jumpedNow = true;
     events.onJump?.();
   }
-  if (!state.prone && !jumpedNow && !state.onGround && state.mantleT <= 0) {
-    if (state.canMantle && input.jumpHeld && state.vel.y < 2.6) {
+  if (!state.prone && !state.onGround && state.mantleT <= 0) {
+    if (state.canMantle && input.jumpHeld) {
       const led = findMantle(state, world, STANCE.standHeight, STANCE.radius);
       if (led) beginMantle(state, led, events);
     }
-    if (state.canDoubleJump && state.mantleT <= 0 && input.jumpPressed && state.jumpsLeft > 0) {
+    if (
+      !jumpedNow &&
+      state.canDoubleJump &&
+      state.mantleT <= 0 &&
+      input.jumpPressed &&
+      state.jumpsLeft > 0
+    ) {
       state.jumpsLeft--;
       state.vel.y = PHYS.doubleJumpVelocity;
       events.onJump?.();

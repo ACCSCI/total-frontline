@@ -5,15 +5,24 @@ import type { P0Level } from './level';
 export function makeCampaignWorld(level: P0Level): WorldQuery {
   return {
     groundY(x, z, probeY) {
-      const y = level.groundY(x, z);
+      let y = level.groundY(x, z);
+      for (const o of level.climbables) {
+        const dx = x - o.x;
+        const dz = z - o.z;
+        const rr = o.climbR ?? o.r;
+        if (dx * dx + dz * dz > rr * rr) continue;
+        if (probeY !== undefined && (o.topY ?? 0) > probeY + 0.02) continue;
+        if ((o.topY ?? 0) > y) y = o.topY ?? 0;
+      }
       if (probeY !== undefined && y > probeY) return null;
       return y;
     },
     ceilingY() {
       return Number.POSITIVE_INFINITY;
     },
-    blocked(x, z, _y0, _y1, radius) {
+    blocked(x, z, y0, _y1, radius) {
       for (const o of level.obstacles) {
+        if (o.topY !== undefined && y0 >= o.topY - 0.02) continue;
         const dx = x - o.x;
         const dz = z - o.z;
         const min = o.r + radius;
@@ -21,10 +30,11 @@ export function makeCampaignWorld(level: P0Level): WorldQuery {
       }
       return false;
     },
-    depenetrate(pos, radius, _y0, _y1) {
+    depenetrate(pos, radius, y0, _y1) {
       for (let pass = 0; pass < 2; pass++) {
         let moved = false;
         for (const o of level.obstacles) {
+          if (o.topY !== undefined && y0 >= o.topY - 0.02) continue;
           const dx = pos.x - o.x;
           const dz = pos.z - o.z;
           const min = o.r + radius;
@@ -37,7 +47,7 @@ export function makeCampaignWorld(level: P0Level): WorldQuery {
         }
         if (!moved) break;
       }
-      void (_y0 + _y1);
+      void (y0 + _y1);
     },
     clampHorizontal(pos: Vec3, padding) {
       pos.x = Math.min(level.bounds.maxX - padding, Math.max(level.bounds.minX + padding, pos.x));

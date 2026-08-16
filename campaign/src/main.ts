@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { adsHidesCrosshair, scopeBlend, showBreathHint } from '../../shared/gameplay';
 import { CampaignRules } from './campaign';
 import { P0Combat } from './combat';
+import { addCrateObstacles, buildSupplyCrate } from './crate';
 import { Crosshair } from './crosshair';
 import { PropDebugger } from './debug-mode';
 import { spawnExplosion, updateCombatFx } from './fx';
@@ -9,16 +10,16 @@ import { gridFootprint } from './grid';
 import { predictGroundDelta } from './ground-model';
 import { bindCampaignInput } from './input';
 import { typeMissionBriefing } from './intro-typing';
-import { buildP0Level, buildSupplyCrate, type P0Level } from './level';
+import { buildP0Level, type P0Level } from './level';
+import { createOutroAnimation } from './outro-animation';
 import { closePause, openPause } from './pause-menu';
 import { FirstPersonPlayer } from './player';
 import { createRenderer, type GameRenderer } from './renderer';
 import { ScreenRain } from './screen-rain';
-import { createOutroAnimation } from './outro-animation';
 import { makeIntroCutscene, makeOutroCutscene, Sequencer } from './sequencer';
-import { warmupZoneShaders } from './shader-warmup';
 import { SETTINGS } from './settings';
 import { SFX } from './sfx';
+import { warmupZoneShaders } from './shader-warmup';
 import { snapObjectToTerrain, windAt } from './terrain';
 import { ViewmodelRig } from './viewmodel';
 
@@ -293,7 +294,7 @@ async function boot() {
       });
     crateSnap();
     level.registerPropSnap(crateSnap);
-    for (const dx of [-0.4, 0, 0.4]) level.addObstacle(4.7 + dx, 36, 0.32);
+    addCrateObstacles(level, crate, 4.7, 36, 0.4, 0.32);
 
     const clone = crate.clone(true);
     clone.scale.setScalar(0.65);
@@ -309,7 +310,7 @@ async function boot() {
       });
     cloneSnap();
     level.registerPropSnap(cloneSnap);
-    for (const dx of [-0.32, 0, 0.32]) level.addObstacle(-4.5 + dx, -62, 0.26);
+    addCrateObstacles(level, clone, -4.5, -62, 0.32, 0.26);
     await wait(0);
 
     /* Build the debugger AFTER the crates exist so raycast selection can see them. */
@@ -322,7 +323,8 @@ async function boot() {
       markObjective('o9');
       const fade = document.getElementById('cgFade');
       fade?.classList.add('on');
-      requestAnimationFrame(() => requestAnimationFrame(() => { playOutro(); setTimeout(() => fade?.classList.remove('on'), 900); }));
+      requestAnimationFrame(() => requestAnimationFrame(playOutro));
+      setTimeout(() => fade?.classList.remove('on'), 900);
     });
     viewmodel = new ViewmodelRig(campaign);
     // Pre-warm the viewmodel pass so the first frame after the intro hand-off
@@ -369,7 +371,8 @@ async function boot() {
     if (assetStatus)
       assetStatus.textContent = '资产流：程序化地图 · 音频：与单人共用采样（枪声/换弹/脚步）';
 
-    setLoading('正在预热战区渲染管线…'); warmupZoneShaders(renderer, scene);
+    setLoading('正在预热战区渲染管线…');
+    warmupZoneShaders(renderer, scene);
 
     setLoading('初始化完成，准备进入任务简报');
     loadingSub.textContent = '单击进入任务简报 · ESC 可跳过开场';
@@ -422,7 +425,9 @@ async function boot() {
         }
         campaign?.update(dt, player.spreadRecoveryMultiplier);
         campaign?.updateHud();
-        stanceText.textContent = player.prone ? '卧倒 · 潜行' : player.crouch ? '蹲伏 · 潜行' : '站立';
+        const stanceName = player.prone ? '卧倒' : player.crouch ? '蹲伏' : '站立';
+        stanceText.textContent =
+          player.prone || player.crouch ? `${stanceName} · 潜行` : stanceName;
         stanceText.classList.toggle('prone', player.prone);
 
         /* objective progression along the linear corridor */

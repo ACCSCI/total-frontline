@@ -3,9 +3,14 @@ import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
 import audioData from '../../shared/audio-params.json';
 import missionsData from '../../shared/missions.json';
 import { buildHorizonBackdrop } from './backdrop';
-import { makeWaterMaterial, placeGroundScatter, placeMissionSetDressing, updateWaterMaterial } from './mission-world';
 import { placeEnemyCamps } from './enemy-camps';
 import { spawnWaterSplash } from './fx';
+import {
+  makeWaterMaterial,
+  placeGroundScatter,
+  placeMissionSetDressing,
+  updateWaterMaterial,
+} from './mission-world';
 import { makeRainTexture } from './rain-texture';
 import {
   hash2,
@@ -27,6 +32,8 @@ export interface LevelObstacle {
   x: number;
   z: number;
   r: number;
+  topY?: number;
+  climbR?: number;
 }
 
 export interface LevelObjective {
@@ -51,59 +58,9 @@ export interface P0Level {
   setObjectivePassed(id: string): void;
   registerPropSnap(fn: () => void): void;
   resnapProps(): number;
-  addObstacle(x: number, z: number, r: number): void;
+  addObstacle(x: number, z: number, r: number, topY?: number): void;
+  climbables: LevelObstacle[];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
-}
-
-export function buildSupplyCrate(): THREE.Group {
-  const crate = new THREE.Group();
-  crate.name = 'P0_SUPPLY_CRATE';
-
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: 0x3e4a36,
-    roughness: 0.8,
-    metalness: 0.15,
-  });
-  bodyMat.userData.surfaceKey = 'crate';
-  const trimMat = new THREE.MeshStandardMaterial({
-    color: 0x24251f,
-    roughness: 0.7,
-    metalness: 0.3,
-  });
-  trimMat.userData.surfaceKey = 'metal';
-  const strapMat = new THREE.MeshStandardMaterial({
-    color: 0x1b1c17,
-    roughness: 0.6,
-    metalness: 0.2,
-  });
-  strapMat.userData.surfaceKey = 'metal';
-
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.72, 0.62), bodyMat);
-  body.position.y = 0.36;
-  body.castShadow = true;
-  body.receiveShadow = true;
-  crate.add(body);
-
-  const lid = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.07, 0.66), trimMat);
-  lid.position.y = 0.755;
-  lid.castShadow = true;
-  crate.add(lid);
-
-  for (const [sx, sz] of [
-    [-0.46, 0],
-    [0.46, 0],
-    [0, -0.28],
-    [0, 0.28],
-  ]) {
-    const strap = new THREE.Mesh(
-      new THREE.BoxGeometry(Math.abs(sx) > 0 ? 0.07 : 1.04, 0.78, Math.abs(sz) > 0 ? 0.07 : 0.68),
-      strapMat
-    );
-    strap.position.set(sx, 0.39, sz);
-    crate.add(strap);
-  }
-
-  return crate;
 }
 
 export function buildP0Level(scene: THREE.Scene): P0Level {
@@ -172,10 +129,13 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     const boundaryBand = guard >= 390 && guard < 640;
     const x = flank
       ? side * (7.4 + hash2(guard * 1.7, 0.31) * 21)
-      : boundaryBand ? side * (7.4 + hash2(guard * 1.7, 0.31) * 27) : (hash2(guard * 1.7, 0.31) * 2 - 1) * 108;
+      : boundaryBand
+        ? side * (7.4 + hash2(guard * 1.7, 0.31) * 27)
+        : (hash2(guard * 1.7, 0.31) * 2 - 1) * 108;
     const zr = hash2(guard * 3.3, 0.77) * 2 - 1;
     const z = boundaryBand
-      ? (hash2(guard * 5.1, 0.9) > 0.5 ? 1 : -1) * (PATH_LENGTH / 2 + 40 + hash2(guard * 2.2, 1.1) * 130)
+      ? (hash2(guard * 5.1, 0.9) > 0.5 ? 1 : -1) *
+        (PATH_LENGTH / 2 + 40 + hash2(guard * 2.2, 1.1) * 130)
       : zr * (guard < 300 ? PATH_LENGTH / 2 + 10 : GROUND_SPAN / 2 - 140);
     if (Math.abs(x) < 6.5 && z > BRIDGE_Z - 12 && z < SPAWN_Z + 8) continue;
     const key = `${Math.round(x)}:${Math.round(z)}`;
@@ -207,7 +167,9 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
       const trunkY = rayGroundHeight(x, z) + 1.2 * s - 0.03;
       _pos.set(x, trunkY, z);
       _scale.set(s, s, s);
-      _q.setFromEuler(new THREE.Euler((hash - 0.5) * 0.08, hash * Math.PI * 2, (hash - 0.5) * 0.08));
+      _q.setFromEuler(
+        new THREE.Euler((hash - 0.5) * 0.08, hash * Math.PI * 2, (hash - 0.5) * 0.08)
+      );
       trunkMesh.setMatrixAt(i, new THREE.Matrix4().compose(_pos, _q, _scale));
       _pos.set(x, trunkY + 2.15 * s, z);
       canopyMesh.setMatrixAt(i, new THREE.Matrix4().compose(_pos, _q, _scale));
@@ -235,10 +197,10 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   for (let i = 0; i < BUSHES; i++) {
     const side = i % 2 ? 1 : -1;
     const x = side * (6.6 + hash2(i * 1.9, 3.1) * 20) + (hash2(i, 9.9) - 0.5) * 2.4;
-    const z = i < 430
-      ? (hash2(i * 4.7, 5.3) * 2 - 1) * (PATH_LENGTH / 2 + 4)
-      : (hash2(i * 4.7, 5.3) > 0.5 ? 1 : -1) *
-        (PATH_LENGTH / 2 + 34 + hash2(i, 17.7) * 118);
+    const z =
+      i < 430
+        ? (hash2(i * 4.7, 5.3) * 2 - 1) * (PATH_LENGTH / 2 + 4)
+        : (hash2(i * 4.7, 5.3) > 0.5 ? 1 : -1) * (PATH_LENGTH / 2 + 34 + hash2(i, 17.7) * 118);
     const s = 0.7 + hash2(i * 2.3, 8.1) * 1.2;
     bushData.push({ x, z, s });
     const support = rayGroundHeight(x, z);
@@ -267,7 +229,12 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   group.add(bushMesh);
 
   const obstacles: LevelObstacle[] = [];
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x5a615d, roughness: 0.95, metalness: 0.03 });
+  const climbables: LevelObstacle[] = [];
+  const rockMat = new THREE.MeshStandardMaterial({
+    color: 0x5a615d,
+    roughness: 0.95,
+    metalness: 0.03,
+  });
   const logMat = new THREE.MeshStandardMaterial({ color: 0x211b13, roughness: 0.94 });
   for (let i = 0; i < 84; i++) {
     const side = i % 2 ? 1 : -1;
@@ -512,6 +479,8 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   scene.fog = new THREE.FogExp2(0x0b141f, 0.0085);
   scene.background = new THREE.Color(0x0b141f);
 
+  for (const o of obstacles) if (o.topY !== undefined) climbables.push(o);
+
   return {
     group,
     objectives,
@@ -519,7 +488,11 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     terrainHeight,
     groundY: rayGroundHeight,
     bounds: { minX: -15, maxX: 15, minZ: -1020, maxZ: 1020 },
-    setCinematicLighting(on: boolean) { sun.intensity = on ? 8.0 : 2.4; hemi.intensity = on ? 3.2 : 1.35; amb.intensity = on ? 2.0 : 0.85; },
+    setCinematicLighting(on: boolean) {
+      sun.intensity = on ? 8.0 : 2.4;
+      hemi.intensity = on ? 3.2 : 1.35;
+      amb.intensity = on ? 2.0 : 0.85;
+    },
     waterDepth(x: number, z: number) {
       if (Math.abs(z + 520) < 2.9 && Math.abs(x) < 8) return 0.12;
       let depth = 0;
@@ -529,7 +502,9 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
       }
       return depth;
     },
-    spawnWaterSplashAt(point: THREE.Vector3) { spawnWaterSplash(scene, point); },
+    spawnWaterSplashAt(point: THREE.Vector3) {
+      spawnWaterSplash(scene, point);
+    },
     updateRain(time: number, dt: number, cameraPos: THREE.Vector3) {
       updateWaterMaterial(dt);
       animateGroundScatter(time, cameraPos);
@@ -592,8 +567,11 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
       for (const fn of propSnaps) fn();
       return propSnaps.length;
     },
-    addObstacle(x: number, z: number, r: number) {
-      obstacles.push({ x, z, r });
+    addObstacle(x: number, z: number, r: number, topY?: number) {
+      const o = { x, z, r, topY };
+      obstacles.push(o);
+      if (topY !== undefined) climbables.push(o);
     },
+    climbables,
   };
 }

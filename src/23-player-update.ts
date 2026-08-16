@@ -124,6 +124,8 @@ function applyLegacyLoco(loco) {
   player.jumpsLeft = loco.jumpsLeft;
   player.mantleT = loco.mantleT;
   player.mantleDur = loco.mantleDur;
+  player.mantleFrom = loco.mantleFrom;
+  player.mantleTo = loco.mantleTo;
   player.mantleTilt = loco.mantleTilt;
   player.sprintFireRaise = loco.sprintFireRaise;
 }
