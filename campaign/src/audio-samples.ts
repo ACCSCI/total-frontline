@@ -28,7 +28,7 @@ const RELOAD_WEAPONS = ['rifle', 'ak', 'pistol', 'sniper', 'lmg', 'vector', 'p90
 const RELOAD_STAGES = ['lift', 'out', 'in', 'action'];
 
 function audioUrl(rel: string) {
-  return `/assets/audio/${rel}`;
+  return `assets/audio/${rel}`;
 }
 
 function layerKind(id: string) {
