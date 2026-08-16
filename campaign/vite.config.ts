@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { cp } from 'node:fs/promises';
 import { createReadStream, existsSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,7 +41,20 @@ export default defineConfig({
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 2500,
   },
-  plugins: [serveRepoAudio()],
+  plugins: [
+    serveRepoAudio(),
+    {
+      name: 'bundle-campaign-audio',
+      async closeBundle() {
+        // Campaign pages are served from arbitrary base paths (repo root,
+        // /campaign/, VibeHub play URLs), so audio must live next to the
+        // campaign bundle, not at an absolute /assets/audio URL.
+        await cp(join(repoRoot, 'assets', 'audio'), fileURLToPath(new URL('../dist/campaign/assets/audio', import.meta.url)), {
+          recursive: true,
+        });
+      },
+    },
+  ],
   server: {
     host: '127.0.0.1',
     port: 5173,
