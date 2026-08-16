@@ -476,6 +476,7 @@ function updateHeli(dt) {
 function startGame() {
   document.body.classList.remove('menu-open');
   document.body.classList.toggle('campaign', G.mode === 'mission');
+  if (MENU_SHOWCASE) MENU_SHOWCASE.active = false;
   SFX.menuMusic(false);
   resetWorldState();
   spawnAllies();
@@ -507,6 +508,7 @@ function showMenu() {
   clearCampaign();
   UI.startScreen.classList.remove('hide');
   document.body.classList.add('menu-open');
+  if (MENU_SHOWCASE) MENU_SHOWCASE.active = true;
   showMainMenuPage('', false);
   SFX.music(false);
   SFX.init();

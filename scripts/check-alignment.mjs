@@ -127,6 +127,11 @@ const campaignCrosshair = read('../campaign/src/crosshair.ts');
 const campaignSfx = read('../campaign/src/sfx.ts');
 const campaignSoldier = read('../campaign/src/soldier.ts');
 const campaignViewmodel = read('../campaign/src/viewmodel.ts');
+const sharedMovement = read('../shared/gameplay/movement.ts');
+const sharedStance = read('../shared/gameplay/stance.ts');
+const sharedSpread = read('../shared/gameplay/spread.ts');
+const sharedAi = read('../shared/gameplay/ai.ts');
+const sharedReload = read('../shared/gameplay/reload.ts');
 
 let mismatches = 0;
 const aligned = (ok, label) => {
@@ -140,31 +145,52 @@ const has = (text, needle, label) => aligned(text.includes(needle), label);
 /* Movement / camera feel must be the single-player update, not a simplified copy. */
 has(
   campaignPlayer,
-  "import movementData from '../../shared/movement.json'",
-  'player uses shared movement data'
+  "from '../../shared/gameplay'",
+  'player steps locomotion from the shared gameplay layer'
 );
-has(campaignPlayer, '1 - 0.4 * this.aimEase', 'player ADS move penalty matches single-player');
+has(sharedMovement, 'ADS_MOVE_PENALTY = 0.4', 'shared ADS move penalty matches single-player');
+has(sharedMovement, 'MANTLE_RISE = 1.95', 'shared mantle rise matches single-player');
+const legacyPlayerUpdate = read('../src/23-player-update.ts');
 has(
-  campaignPlayer,
-  'this.prone ? 0.72 : this.crouch ? 1.05 : 1.42',
+  legacyPlayerUpdate,
+  'Gameplay.stepLocomotion',
+  'single-player locomotion calls the shared stepper'
+);
+has(
+  legacyPlayerUpdate,
+  'Gameplay.stepLook',
+  'single-player look uses the extracted single-player controller'
+);
+has(
+  legacyPlayerUpdate,
+  'Gameplay.stepView',
+  'single-player camera uses the extracted single-player controller'
+);
+has(
+  read('../shared/gameplay/controller.ts'),
+  'loco.prone ? 0.72 : loco.crouch ? 1.05 : 1.42',
   'player footstep cadence matches single-player'
 );
 has(
-  campaignPlayer,
-  'this.prone ? 1.65 : this.crouch ? 1.28 : 1',
-  'player stance spread recovery matches single-player'
+  sharedStance,
+  'prone ? 1.65 : crouch ? 1.28 : 1',
+  'shared stance recovery matches single-player'
 );
 has(
-  campaignPlayer,
-  'Math.sin(this.stepPhase * 2) * 0.032',
+  read('../shared/gameplay/controller.ts'),
+  'view.stepPhase * 2) * 0.032',
   'player head bob amplitude matches single-player'
 );
-has(campaignPlayer, '0.0125', 'scoped sway amplitude matches single-player');
-has(campaignPlayer, 'this.pos.y = groundY', 'player position uses single-player feet semantics');
+has(
+  read('../shared/gameplay/controller.ts'),
+  '0.0125',
+  'scoped sway amplitude matches single-player'
+);
+has(campaignPlayer, 'stepPlayer', 'player position uses the extracted single-player controller');
 has(campaignPlayer, 'SFX.land(f)', 'landing audio matches single-player');
 has(
-  campaignMain,
-  'Math.tan((aimFov * Math.PI) / 360)',
+  read('../shared/gameplay/controller.ts'),
+  'Math.tan((weapon.adsFov * PI) / 360)',
   'ADS mouse sensitivity scales with zoom like single-player'
 );
 has(
@@ -179,44 +205,153 @@ has(
   'e.soldier.hbHead, e.soldier.hbBody, e.soldier.hbLegs',
   'campaign bullets use single-player hitboxes'
 );
-has(campaignCombat, 'legshot ? 0.78 : 1', 'campaign leg shots use single-player 0.78 multiplier');
 has(
-  campaignCombat,
-  'Math.max(0.28, def.crouchMult * 0.55)',
-  'campaign prone spread matches single-player'
+  read('../shared/gameplay/ballistics.ts'),
+  'LEG_MULTIPLIER = 0.78',
+  'shared leg shots use single-player 0.78 multiplier'
 );
-has(campaignCombat, 'def.adsSpread, this.rules.adsEase', 'campaign ADS cone matches single-player');
+has(sharedStance, '(crouchMult || 0.7) * 0.55', 'shared prone spread matches single-player');
+has(sharedSpread, 'weapon.adsSpread', 'shared ADS cone matches single-player');
 has(campaignCombat, 'this.worldTargets', 'campaign bullets stop on rendered world geometry');
 has(
+  read('../shared/gameplay/ballistics.ts'),
+  'resistance: 0.34',
+  'shared wood penetration matches single-player'
+);
+has(
+  read('../src/19c-ballistics.ts'),
+  'Gameplay.tracePenetrations',
+  'legacy ballistics calls the shared tracer'
+);
+has(campaignCombat, 'tracePenetrations', 'campaign bullets use shared penetration');
+has(
   campaignCombat,
-  'this.alertEnemiesToGunfire(def.noise)',
+  'this.alertEnemiesToGunfire(def.noise, suppressed)',
   'campaign gunfire alert radius matches single-player noise'
 );
-has(campaignCombatUtils, 'dist < 52', 'campaign enemy sight range matches single-player');
+has(sharedAi, 'ENEMY_SIGHT = 52', 'shared enemy sight range matches single-player');
+has(sharedAi, '5.5 + rng() * 3.5', 'shared enemy damage matches single-player');
+has(sharedAi, 'dist - 25) / 55, 0.5, 1', 'shared enemy damage falloff matches single-player');
+has(campaignCombatUtils, 'combatSteer', 'campaign AI steers from the shared combat layer');
+const sharedMelee = read('../shared/gameplay/melee.ts');
+has(sharedMelee, 'MELEE_RANGE = 2.35', 'shared melee range matches single-player');
+has(sharedMelee, 'MELEE_BODY_DAMAGE = 65', 'shared melee body damage matches single-player');
+has(read('../src/20a-melee.ts'), 'Gameplay.MELEE_RANGE', 'legacy melee uses the shared range');
+has(read('../campaign/src/combat.ts'), 'MELEE_RANGE', 'campaign melee uses the shared range');
+has(read('../campaign/src/input.ts'), 'KeyV', 'campaign binds V to melee like single-player');
 has(
-  campaignCombatUtils,
-  '5.5 + Math.random() * 3.5',
-  'campaign enemy damage matches single-player'
+  read('../campaign/src/input.ts'),
+  'host.campaign.switchSlot((host.campaign.activeSlot + dir + n) % n)',
+  'campaign mouse wheel cycles weapons like single-player'
 );
 has(
-  campaignCombatUtils,
-  'dist - 25) / 55, 0.5, 1',
-  'campaign enemy damage falloff matches single-player'
+  read('../campaign/src/main.ts'),
+  'adsHidesCrosshair',
+  'campaign hides the hip reticle on ADS like single-player'
+);
+has(
+  read('../shared/gameplay/attachments.ts'),
+  "optic: 'micro_dot'",
+  'campaign rifles default to the single-player red-dot'
+);
+has(
+  read('../shared/gameplay/attachments.ts'),
+  "muzzle: 'suppressor'",
+  'campaign start loadout issues a suppressor'
+);
+has(
+  read('../campaign/src/campaign.ts'),
+  'PRIMARY_WEAPONS.p9',
+  'campaign mission 1 issues a pistol'
+);
+has(read('../shared/gameplay/ai.ts'), '>= 0.2', 'shared enemy FOV matches single-player');
+has(
+  read('../shared/gameplay/throwables.ts'),
+  'LETHAL_ENEMY_RADIUS = 6.5',
+  'shared grenade blast uses the single-player explode radius'
+);
+has(
+  read('../src/20e-throwables.ts'),
+  'Gameplay.spawnThrow',
+  'single-player throws the shared grenade'
+);
+has(read('../campaign/src/combat-throw.ts'), 'spawnThrow', 'campaign throws the shared grenade');
+has(
+  read('../campaign/src/viewmodel.ts'),
+  'ejectedMag',
+  'campaign keeps the single-player ejected magazine on the rifle'
+);
+has(
+  read('../shared/gameplay/loot.ts'),
+  'ENEMY_DROP_WEAPON_CHANCE = 0.55',
+  'shared enemy weapon drop chance'
+);
+has(
+  read('../src/20f-loot.ts'),
+  'Gameplay.rollEnemyDrops',
+  'single-player enemy drops use shared loot'
+);
+has(read('../campaign/src/combat.ts'), 'rollEnemyDrops', 'campaign enemy drops use shared loot');
+has(
+  read('../src/20f-loot.ts'),
+  'Gameplay.interactGroundWeapon',
+  'single-player F-swap uses shared loot'
+);
+has(
+  read('../campaign/src/campaign.ts'),
+  'interactGroundWeapon',
+  'campaign F-swap uses shared loot'
 );
 
 /* Weapon transaction state. */
-has(campaignRules, 'k * k * (3 - 2 * k)', 'campaign ADS ease curve matches single-player');
-has(campaignRules, 'reloadBlocksFire', 'campaign reload blocks fire exactly like single-player');
+has(
+  read('../shared/gameplay/controller.ts'),
+  'easeInOutCubic(view.adsK)',
+  'shared ADS ease curve matches single-player'
+);
+has(
+  read('../campaign/src/player.ts'),
+  'stepPlayer',
+  'campaign player uses the extracted single-player controller'
+);
+has(
+  read('../campaign/src/viewmodel.ts'),
+  "from './generated-vm-anim'",
+  'campaign viewmodel plays the generated single-player animation'
+);
+has(sharedReload, 'reloadBlocksFire', 'shared reload blocks fire exactly like single-player');
 has(campaignRules, 'cancelReload', 'campaign sprint cancels reload like single-player');
 has(campaignRules, 'w.pumpT > 0 ||', 'campaign reload guards pump like single-player');
 
 /* Crosshair is the same canvas reticle and formula. */
+const sharedCrosshair = read('../shared/gameplay/crosshair.ts');
 for (const needle of ['baseScale: 105', 'fireScale: 240', 'reloadErr: 2.0', 'maxSpread: 12'])
-  has(campaignCrosshair, needle, `campaign crosshair ${needle} matches single-player`);
+  has(sharedCrosshair, needle, `shared crosshair ${needle} matches single-player`);
+has(
+  sharedCrosshair,
+  '1 - 0.45 * state.adsEase',
+  'shared crosshair ADS contraction matches single-player'
+);
 has(
   campaignCrosshair,
-  '1 - 0.45 * state.adsEase',
-  'campaign crosshair ADS contraction matches single-player'
+  "from '../../shared/gameplay'",
+  'campaign crosshair imports the shared reticle'
+);
+has(
+  read('../src/19-player-hud.ts'),
+  'Gameplay.crosshairTarget',
+  'single-player crosshair imports the shared reticle'
+);
+has(read('../campaign/src/fx.ts'), 'createTracerFlight', 'campaign tracers import shared flight');
+has(
+  read('../campaign/src/combat-utils.ts'),
+  'stepDeathBody',
+  'campaign death imports shared death poses'
+);
+has(
+  read('../src/22-ai-b.ts'),
+  'Gameplay.stepDeathBody',
+  'single-player death imports shared poses'
 );
 
 /* Audio and rig reuse. */

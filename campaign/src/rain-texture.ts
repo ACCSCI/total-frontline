@@ -16,9 +16,9 @@ export function makeRainTexture(slant: number): THREE.CanvasTexture {
   const headY = 18;
   const tailY = 116;
   const strokes = [
-    { w: 6.5, a: 0.22, color: '180,208,234' },
-    { w: 4.0, a: 0.42, color: '205,226,244' },
-    { w: 2.0, a: 0.62, color: '235,244,252' },
+    { w: 8.5, a: 0.75, color: '175,205,232' },
+    { w: 4.8, a: 0.95, color: '210,230,246' },
+    { w: 2.4, a: 1.0, color: '240,247,253' },
   ];
   g.lineCap = 'round';
   for (const s of strokes) {
@@ -33,7 +33,7 @@ export function makeRainTexture(slant: number): THREE.CanvasTexture {
     g.quadraticCurveTo((headX + tailX) / 2 + slant * 4, (headY + tailY) / 2, tailX, tailY);
     g.stroke();
   }
-  g.fillStyle = 'rgba(230,242,250,0.55)';
+  g.fillStyle = 'rgba(235,245,252,0.9)';
   g.beginPath();
   g.ellipse(headX, headY, 1.5, 3.2, slant * 0.5, 0, Math.PI * 2);
   g.fill();

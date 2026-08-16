@@ -42,6 +42,7 @@ export interface WeaponDef {
   adsSpread: number;
   adsTime: number;
   scope?: boolean;
+  bracedAim?: boolean;
   noise: number;
   shellBig: boolean;
 }
@@ -92,6 +93,8 @@ for (const [id, w] of Object.entries(rawWeapons)) {
     adsFov: w.adsFov ?? 50,
     adsSpread: w.adsSpread ?? 0.4,
     adsTime: w.adsTime ?? 0.2,
+    scope: !!w.scope,
+    bracedAim: !!w.bracedAim,
     noise: w.noise ?? 34,
     shellBig: w.shellBig ?? false,
   };

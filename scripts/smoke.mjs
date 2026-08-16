@@ -26,6 +26,18 @@ try {
   throw error;
 }
 await new Promise((r) => setTimeout(r, 1200));
+/* The branded click-to-enter gate is the first user gesture: it unlocks Web
+   Audio and dismisses the intro so the main menu is interactive. */
+const introEl = await page.$('#intro');
+if (introEl) {
+  const introHidden = await page.evaluate(() =>
+    document.getElementById('intro').classList.contains('hide')
+  );
+  if (!introHidden) {
+    await page.click('#intro');
+    await new Promise((r) => setTimeout(r, 600));
+  }
+}
 const fail = (msg) => {
   console.error('FAIL: ' + msg);
   process.exitCode = 1;

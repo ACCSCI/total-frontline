@@ -104,8 +104,8 @@ export class ScreenRain {
     this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     this.sprites = [3.4, 4.8, 6.4].map(makeLensDropSprite);
     this.resize();
-    for (let i = 0; i < 120; i++) this.drops.push(this.makeDrop(true));
-    for (let i = 0; i < 8; i++) this.mists.push(this.makeMist(true));
+    for (let i = 0; i < 190; i++) this.drops.push(this.makeDrop(true));
+    for (let i = 0; i < 12; i++) this.mists.push(this.makeMist(true));
   }
 
   resize() {
@@ -173,7 +173,7 @@ export class ScreenRain {
   }
 
   private makeDrop(anywhere: boolean): LensDrop {
-    const size = 3.0 + Math.random() * 3.6;
+    const size = 2.6 + Math.random() * 3.2;
     const slide = Math.random() < 0.2;
     const y = anywhere
       ? Math.random() * innerHeight * 0.86
@@ -189,7 +189,7 @@ export class ScreenRain {
       size,
       speed: 8 + Math.random() * 18,
       drift: (Math.random() * 2 - 1) * 9,
-      alpha: 0.12 + Math.random() * 0.3,
+      alpha: 0.14 + Math.random() * 0.24,
       phase: Math.random() * Math.PI * 2,
       wobble: 0.4 + Math.random() * 1.4,
       slide,
@@ -203,8 +203,8 @@ export class ScreenRain {
       y: Math.random() * innerHeight * 0.5,
       len: 90 + Math.random() * 260,
       speed: 190 + Math.random() * 320,
-      alpha: 0.02 + Math.random() * 0.04,
-      thickness: 0.6 + Math.random() * 1.2,
+      alpha: 0.045 + Math.random() * 0.06,
+      thickness: 0.8 + Math.random() * 1.5,
     };
   }
 }

@@ -1,6 +1,26 @@
 import * as THREE from 'three';
+import {
+  blendDeathLimb,
+  burstGap,
+  combatSteer,
+  deathGunImpulse,
+  deathGunRestRotation,
+  deathLimbTargets,
+  ENEMY_SIGHT,
+  enemyPlayerDamage,
+  hearSpike,
+  inEnemyFov,
+  nextBurstCount,
+  nextReactionDelay,
+  patrolOffset,
+  rollEnemyTactic,
+  sightDetectRate,
+  stepDeathBody,
+  stepDeathGun,
+} from '../../shared/gameplay';
 import type { Enemy } from './campaign';
 import type { LevelObstacle, P0Level } from './level';
+import { poseCampaignSoldier } from './soldier-anim';
 
 export function losBlocked(
   a: THREE.Vector3,
@@ -34,94 +54,82 @@ export function avoidObstacles(pos: THREE.Vector3, obstacles: LevelObstacle[]) {
   }
 }
 
-export function spawnTracer(
-  scene: THREE.Scene,
-  from: THREE.Vector3,
-  to: THREE.Vector3,
-  color: number
-) {
-  const geo = new THREE.BufferGeometry().setFromPoints([from.clone(), to]);
-  const mat = new THREE.LineBasicMaterial({
-    color,
-    transparent: true,
-    opacity: 0.75,
-    depthWrite: false,
-  });
-  const line = new THREE.Line(geo, mat);
-  line.userData.debugKind = 'fx';
-  scene.add(line);
-  setTimeout(() => {
-    scene.remove(line);
-    geo.dispose();
-    mat.dispose();
-  }, 90);
-}
-
 export function animateEnemyDeath(scene: THREE.Scene, e: Enemy, dt: number) {
-  e.deathT -= dt;
-  const k = 1 - Math.max(0, e.deathT / 0.75);
+  const body = stepDeathBody(e.deathT, dt);
+  e.deathT = body.deathT;
   const p = e.soldier;
-  p.model.rotation.x = k * (Math.PI * 0.5) * 0.98;
-  p.model.position.y = -k * 0.1;
-  p.model.rotation.z = Math.sin(k * 4) * 0.08 * (1 - k);
+  p.model.rotation.x = body.modelRotX;
+  p.model.position.y = body.modelPosY;
+  p.model.rotation.z = body.modelRotZ;
   p.legs.forEach((l, i) => {
-    l.hip.rotation.x = THREE.MathUtils.lerp(l.hip.rotation.x, i ? 0.3 : -0.25, dt * 6);
-    l.knee.rotation.x = THREE.MathUtils.lerp(l.knee.rotation.x, 0.55, dt * 6);
+    const t = deathLimbTargets(i, 'leg');
+    l.hip.rotation.x = blendDeathLimb(l.hip.rotation.x, t.hipX, dt);
+    l.knee.rotation.x = blendDeathLimb(l.knee.rotation.x, t.kneeX, dt);
   });
   p.arms.forEach((a, i) => {
-    a.sh.rotation.x = THREE.MathUtils.lerp(a.sh.rotation.x, i ? 0.6 : 0.35, dt * 6);
-    a.sh.rotation.z = THREE.MathUtils.lerp(a.sh.rotation.z, (i ? 1 : -1) * 0.5, dt * 6);
-    a.el.rotation.x = THREE.MathUtils.lerp(a.el.rotation.x, 0.2, dt * 6);
+    const t = deathLimbTargets(i, 'arm');
+    a.sh.rotation.x = blendDeathLimb(a.sh.rotation.x, t.shX, dt);
+    a.sh.rotation.z = blendDeathLimb(a.sh.rotation.z, t.shZ, dt);
+    a.el.rotation.x = blendDeathLimb(a.el.rotation.x, t.elX, dt);
   });
-  p.rig.rotation.x = THREE.MathUtils.lerp(p.rig.rotation.x, 0, dt * 6);
-  if (!e.gunDropped && k > 0.14) {
+  p.rig.rotation.x = blendDeathLimb(p.rig.rotation.x, 0, dt);
+  if (!e.gunDropped && body.dropGun) {
     e.gunDropped = true;
     scene.attach(p.gun);
-    e.gunVel = new THREE.Vector3(
-      (Math.random() - 0.5) * 3.2,
-      0.6 + Math.random() * 1.2,
-      (Math.random() - 0.5) * 3.2
-    );
-    e.gunAV = new THREE.Vector3(
-      (Math.random() - 0.5) * 12,
-      (Math.random() - 0.5) * 12,
-      (Math.random() - 0.5) * 12
-    );
+    const kick = deathGunImpulse();
+    e.gunVel = new THREE.Vector3(kick.vx, kick.vy, kick.vz);
+    e.gunAV = new THREE.Vector3(kick.avx, kick.avy, kick.avz);
   }
   if (e.gunDropped && e.gunVel && e.gunAV) {
-    e.gunVel.y -= 17 * dt;
-    p.gun.position.addScaledVector(e.gunVel, dt);
-    p.gun.rotation.x += e.gunAV.x * dt;
-    p.gun.rotation.y += e.gunAV.y * dt;
-    p.gun.rotation.z += e.gunAV.z * dt;
-    if (p.gun.position.y <= 0.07) {
-      p.gun.position.y = 0.07;
-      if (Math.abs(e.gunVel.y) < 0.7) {
-        e.gunVel = null;
-        p.gun.rotation.set(
-          Math.random() - 0.5,
-          Math.random() * 7,
-          Math.PI / 2 + (Math.random() - 0.5) * 0.6
-        );
-      } else {
-        e.gunVel.y *= -0.32;
-        e.gunVel.x *= 0.55;
-        e.gunVel.z *= 0.55;
-      }
+    const g = {
+      x: p.gun.position.x,
+      y: p.gun.position.y,
+      z: p.gun.position.z,
+      vx: e.gunVel.x,
+      vy: e.gunVel.y,
+      vz: e.gunVel.z,
+      avx: e.gunAV.x,
+      avy: e.gunAV.y,
+      avz: e.gunAV.z,
+    };
+    const result = stepDeathGun(g, dt);
+    p.gun.position.set(g.x, g.y, g.z);
+    e.gunVel.set(g.vx, g.vy, g.vz);
+    e.gunAV.set(g.avx, g.avy, g.avz);
+    p.gun.rotation.x += g.avx * dt;
+    p.gun.rotation.y += g.avy * dt;
+    p.gun.rotation.z += g.avz * dt;
+    if (result.settled) {
+      e.gunVel = null;
+      const rest = deathGunRestRotation();
+      p.gun.rotation.set(rest.x, rest.y, rest.z);
     }
   }
+}
+
+export interface EnemySense {
+  crouch: boolean;
+  prone: boolean;
+  sprint: boolean;
+  stealth: boolean;
+  suppressedShot: boolean;
+  loudShot: boolean;
 }
 
 export interface EnemyAIHost {
   level: P0Level;
   hurtPlayer(amount: number, shooter?: Enemy): void;
+  onSpotted(enemy: Enemy): void;
+  alertNeighbors(source: Enemy, radius: number): void;
+  onEnemyMuzzleFlash?(enemy: Enemy): void;
 }
 
 export function updateCampaignEnemy(
   host: EnemyAIHost,
   e: Enemy,
   dt: number,
-  playerPos: THREE.Vector3
+  playerPos: THREE.Vector3,
+  sense: EnemySense
 ) {
   e.phase += dt;
   const px = e.root.position.x;
@@ -129,57 +137,113 @@ export function updateCampaignEnemy(
   const dx = playerPos.x - px;
   const dz = playerPos.z - pz;
   const dist = Math.hypot(dx, dz) || 1;
-  e.root.visible = dist < 52;
-  e.root.rotation.y = Math.atan2(dx, dz);
-
-  const canSee = dist < 52 && !losBlocked(e.root.position, playerPos, host.level.obstacles);
-  if (canSee) {
-    e.reactionT -= dt;
-    if (e.reactionT <= 0) e.engaged = true;
-  } else {
-    e.engaged = false;
-    e.reactionT = 0.35 + Math.random() * 0.45;
+  if (e.flinch > 0.35) {
+    e.suspicion = 1;
+    e.engaged = true;
+    e.lastSeenT = 4;
+    e.lastSeenX = playerPos.x;
+    e.lastSeenZ = playerPos.z;
   }
+  const facingX = Math.sin(e.root.rotation.y);
+  const facingZ = Math.cos(e.root.rotation.y);
+  const inFov = inEnemyFov(facingX, facingZ, dx, dz, e.engaged || e.suspicion > 0.55);
+  const sightRange = ENEMY_SIGHT * (sense.prone ? 0.5 : sense.crouch ? 0.72 : 1);
+  const hasLos =
+    dist < sightRange && !losBlocked(e.root.position, playerPos, host.level.obstacles);
+  const canSee = hasLos && (inFov || e.engaged);
+  e.suspicion = THREE.MathUtils.clamp(
+    e.suspicion +
+      sightDetectRate({
+        dist,
+        inFov,
+        hasLos,
+        crouched: sense.crouch,
+        prone: sense.prone,
+        sprinting: sense.sprint,
+      }) *
+        dt +
+      hearSpike(dist, sense.sprint, sense.suppressedShot, sense.loudShot),
+    0,
+    1
+  );
+  if (canSee) {
+    e.lastSeenT = 4.4;
+    e.lastSeenX = playerPos.x;
+    e.lastSeenZ = playerPos.z;
+  } else {
+    e.lastSeenT = Math.max(0, e.lastSeenT - dt);
+  }
+  if (!e.engaged && e.suspicion >= 1) {
+    e.engaged = true;
+    e.reactionT = sense.stealth ? 0 : nextReactionDelay() * 0.7;
+    host.alertNeighbors(e, 16);
+    if (sense.stealth) host.onSpotted(e);
+  }
+  if (e.engaged && e.lastSeenT <= 0 && e.suspicion < 0.2) {
+    e.engaged = false;
+    e.reactionT = nextReactionDelay();
+  }
+  e.root.visible = dist < ENEMY_SIGHT || e.engaged;
 
   let mx = 0;
   let mz = 0;
-  if (e.engaged) {
-    const tangentX = -dz / dist;
-    const tangentZ = dx / dist;
-    const ideal = 8 + (e.baseX % 5);
-    const radial = dist > ideal + 2.5 ? 1 : dist < ideal - 2.5 ? -0.7 : 0;
-    mx = (dx / dist) * radial + tangentX * e.strafeDir;
-    mz = (dz / dist) * radial + tangentZ * e.strafeDir;
-    const ml = Math.hypot(mx, mz) || 1;
-    mx = (mx / ml) * 1.55;
-    mz = (mz / ml) * 1.55;
-    if (Math.random() < dt * 0.45) e.strafeDir *= -1;
-    /* Single-player fire cadence: 2-4 round bursts with short gaps, and the
-       same 25m/55m damage falloff curve. */
-    e.fireT -= dt;
-    if (e.fireT <= 0) {
-      if (e.burst > 0) {
-        e.burst--;
-        const dmg =
-          (5.5 + Math.random() * 3.5) *
-          THREE.MathUtils.clamp(1 - Math.max(0, dist - 25) / 55, 0.5, 1);
-        host.hurtPlayer(dmg, e);
-        e.fireT = e.burst > 0 ? 0.11 + Math.random() * 0.04 : 0.85 + Math.random() * 1.05;
-      } else {
-        e.burst = 2 + Math.floor(Math.random() * 3);
-        e.fireT = 0.03;
+  const hunting = e.engaged || e.suspicion > 0.4;
+  if (hunting) {
+    e.tacticT -= dt;
+    if (e.tacticT <= 0) {
+      e.tacticT = 1.6 + Math.random() * 1.8;
+      e.tactic = e.kind === 'nco' ? 'flank' : rollEnemyTactic();
+      e.strafeDir *= -1;
+    }
+    const aimX = canSee ? dx : e.lastSeenX - px;
+    const aimZ = canSee ? dz : e.lastSeenZ - pz;
+    const aimDist = Math.hypot(aimX, aimZ) || 1;
+    const behindCover = losBlocked(e.root.position, playerPos, host.level.obstacles);
+    const tactic = !canSee ? 'push' : behindCover && e.reloadT > 0 ? 'hold' : e.tactic;
+    const steer = combatSteer(canSee ? dist : aimDist, tactic, e.strafeDir, aimX, aimZ);
+    const ml = Math.hypot(steer.mx, steer.mz) || 1;
+    let speed = steer.speed;
+    if (e.reloadT > 0) speed *= 0.62;
+    if (!canSee) speed *= 1.16;
+    if (e.suspicion > 0.4 && !e.engaged) speed *= 0.7;
+    mx = (steer.mx / ml) * speed;
+    mz = (steer.mz / ml) * speed;
+    if (e.engaged) {
+      if (e.reloadT > 0) {
+        e.reloadT -= dt;
+        e.burst = 0;
+        if (e.reloadT <= 0) e.rounds = 30;
+      } else if (canSee && (e.kind !== 'shotgun' || dist < 14)) {
+        e.fireT -= dt;
+        if (e.fireT <= 0) {
+          if (e.burst > 0) {
+            e.burst--;
+            e.rounds--;
+            const dmg = enemyPlayerDamage(dist) * (e.kind === 'shotgun' ? 1.45 : 1);
+            host.onEnemyMuzzleFlash?.(e);
+            host.hurtPlayer(dmg, e);
+            e.fireT = burstGap(e.burst > 0);
+            if (e.rounds <= 0) {
+              e.burst = 0;
+              e.reloadT = 1.7 + Math.random() * 0.8;
+            }
+          } else {
+            e.burst = nextBurstCount();
+            e.fireT = 0.03;
+          }
+        }
       }
     }
   } else {
     e.patrolT += dt;
-    const tx = e.baseX + Math.sin(e.patrolT * 0.55) * 2.4;
-    const tz = e.baseZ + Math.cos(e.patrolT * 0.4) * 1.8;
-    const pdx = tx - px;
-    const pdz = tz - pz;
+    e.lookScan = Math.sin(e.phase * 0.7) * 0.35;
+    const dest = patrolOffset(e.patrolT, e.baseX, e.baseZ, e.patrolScale || 1);
+    const pdx = dest.x - px;
+    const pdz = dest.z - pz;
     const pl = Math.hypot(pdx, pdz);
     if (pl > 0.3) {
-      mx = (pdx / pl) * 0.7;
-      mz = (pdz / pl) * 0.7;
+      mx = (pdx / pl) * 0.85;
+      mz = (pdz / pl) * 0.85;
     }
   }
 
@@ -197,40 +261,28 @@ export function updateCampaignEnemy(
     host.level.bounds.maxZ - 0.7
   );
   e.root.position.y = host.level.groundY(e.root.position.x, e.root.position.z) + 0.02;
+  e.stuckT += dt;
+  if (e.stuckT >= 0.5) {
+    const moved = Math.hypot(e.root.position.x - e.stuckX, e.root.position.z - e.stuckZ);
+    if (Math.hypot(mx, mz) > 0.2 && moved < 0.2) {
+      e.strafeDir *= -1;
+      e.tactic = 'flank';
+      e.tacticT = 1.2;
+    }
+    e.stuckT = 0;
+    e.stuckX = e.root.position.x;
+    e.stuckZ = e.root.position.z;
+  }
+  if (hunting) {
+    e.root.rotation.y = Math.atan2(canSee ? dx : e.lastSeenX - px, canSee ? dz : e.lastSeenZ - pz);
+    e.lookScan = 0;
+  } else if (Math.hypot(mx, mz) > 0.05) e.root.rotation.y = Math.atan2(mx, mz);
 
   const moving = Math.hypot(mx, mz) > 0.05;
   e.speed = THREE.MathUtils.damp(e.speed, moving ? Math.hypot(mx, mz) : 0, 10, dt);
   if (e.flinch > 0) e.flinch = Math.max(0, e.flinch - dt * 3.2);
-  const walk = moving ? 1 : 0;
   e.walkPhase += dt * (3.0 + e.speed * 2.2);
-  const s1 = Math.sin(e.walkPhase);
-  const c1 = Math.cos(e.walkPhase);
-  const p = e.soldier;
-  p.legs[0].hip.rotation.x = s1 * 0.62 * walk;
-  p.legs[1].hip.rotation.x = -s1 * 0.62 * walk;
-  p.legs[0].knee.rotation.x = Math.max(0, -Math.cos(e.walkPhase)) * 0.7 * walk;
-  p.legs[1].knee.rotation.x = Math.max(0, Math.cos(e.walkPhase)) * 0.7 * walk;
-  p.body.position.y = Math.abs(c1) * 0.045 * walk - e.flinch * 0.03;
-  e.combatBlend = THREE.MathUtils.damp(e.combatBlend, e.engaged ? 1 : 0, 8, dt);
-  e.aimPitch = THREE.MathUtils.lerp(
-    e.aimPitch,
-    e.engaged ? THREE.MathUtils.clamp(1.2 / Math.max(1, dist), -0.25, 0.15) : 0,
-    dt * 5
-  );
-  p.rig.rotation.x = THREE.MathUtils.lerp(0, e.aimPitch, e.combatBlend);
-  p.head.rotation.x = THREE.MathUtils.lerp(0, e.aimPitch * 0.5, e.combatBlend);
-  for (let li = 0; li < 2; li++) {
-    const arm = p.arms[li];
-    arm.sh.rotation.x = THREE.MathUtils.lerp(arm.sh.rotation.x, e.engaged ? -0.55 : 0, dt * 8);
-    arm.sh.rotation.z = THREE.MathUtils.lerp(
-      arm.sh.rotation.z,
-      e.engaged ? (li ? 0.25 : -0.2) : 0,
-      dt * 8
-    );
-    arm.el.rotation.x = THREE.MathUtils.lerp(arm.el.rotation.x, e.engaged ? -0.6 : 0, dt * 8);
-  }
-  p.model.position.z = e.flinch * 0.14;
-  p.model.rotation.x = e.flinch * 0.2;
+  poseCampaignSoldier(e, dt, dist);
   e.hitFlash = Math.max(0, e.hitFlash - dt);
   e.root.scale.setScalar(1 + e.hitFlash * 0.6);
 }

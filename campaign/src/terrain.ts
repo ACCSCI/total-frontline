@@ -29,7 +29,7 @@ export function terrainHeight(x: number, z: number): number {
   const rise = side ** 2.1 * 22;
   const wave = Math.sin(z * 0.08) * 0.35 + Math.cos(x * 0.22 + z * 0.05) * 0.28;
   const fine = noise2(x * 0.13, z * 0.17) * 0.75 - 0.25;
-  const far = Math.min(1, Math.max(0, Math.abs(z) - 100) / 240);
+  const far = Math.min(1, Math.max(0, Math.abs(z) - 1050) / 240);
   const rolling =
     (Math.sin(z * 0.019) * 5.2 +
       Math.sin(z * 0.047 + 1.7) * 2.8 +
@@ -116,15 +116,21 @@ export function makeTerrainMaterial(
 export function paintGround(geometry: THREE.BufferGeometry) {
   const pos = geometry.attributes.position as THREE.BufferAttribute;
   const colors = new Float32Array(pos.count * 3);
-  const cA = new THREE.Color(0x30352f);
-  const cB = new THREE.Color(0x4a493c);
-  const cMud = new THREE.Color(0x514536);
+  const cA = new THREE.Color(0x262e28);
+  const cB = new THREE.Color(0x47483a);
+  const cMud = new THREE.Color(0x554735);
+  const cWet = new THREE.Color(0x101a1c);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const z = pos.getZ(i);
-    const n = noise2(x * 0.09, z * 0.11);
-    const c = cA.clone().lerp(cB, THREE.MathUtils.clamp(n, 0, 1));
-    if (Math.abs(x) < 4) c.lerp(cMud, 0.55);
+    const broad = THREE.MathUtils.clamp(noise2(x * 0.09, z * 0.11), 0, 1);
+    const detail = THREE.MathUtils.clamp(noise2(x * 0.41, z * 0.37), 0, 1);
+    const c = cA.clone().lerp(cB, broad * 0.6 + detail * 0.4);
+    const pathWear = THREE.MathUtils.clamp(1 - Math.abs(x) / 5.5, 0, 1);
+    c.lerp(cMud, pathWear * 0.5);
+    const wet = noise2(x * 0.07, z * 0.065);
+    if (wet > 0.54) c.lerp(cWet, (wet - 0.54) * 0.55);
+    c.multiplyScalar(0.72 + detail * 0.4);
     colors[i * 3] = c.r;
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;

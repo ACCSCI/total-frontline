@@ -1,16 +1,23 @@
 import * as THREE from 'three';
+import { adsHidesCrosshair, scopeBlend, showBreathHint } from '../../shared/gameplay';
 import { CampaignRules } from './campaign';
 import { P0Combat } from './combat';
 import { Crosshair } from './crosshair';
 import { PropDebugger } from './debug-mode';
+import { spawnExplosion, updateCombatFx } from './fx';
 import { gridFootprint } from './grid';
 import { predictGroundDelta } from './ground-model';
+import { bindCampaignInput } from './input';
 import { typeMissionBriefing } from './intro-typing';
 import { buildP0Level, buildSupplyCrate, type P0Level } from './level';
+import { closePause, openPause } from './pause-menu';
 import { FirstPersonPlayer } from './player';
 import { createRenderer, type GameRenderer } from './renderer';
 import { ScreenRain } from './screen-rain';
+import { createOutroAnimation } from './outro-animation';
 import { makeIntroCutscene, makeOutroCutscene, Sequencer } from './sequencer';
+import { warmupZoneShaders } from './shader-warmup';
+import { SETTINGS } from './settings';
 import { SFX } from './sfx';
 import { snapObjectToTerrain, windAt } from './terrain';
 import { ViewmodelRig } from './viewmodel';
@@ -29,6 +36,7 @@ const introOverlay = document.getElementById('introOverlay') as HTMLDivElement;
 const introTyped = document.getElementById('introTyped') as HTMLSpanElement;
 const beaconLayer = document.getElementById('beaconLayer') as HTMLDivElement;
 const stanceText = document.getElementById('p0Stance') as HTMLDivElement;
+const pauseEl = document.getElementById('pause') as HTMLDivElement;
 
 const scene = new THREE.Scene();
 let renderer: GameRenderer;
@@ -36,9 +44,9 @@ let level: P0Level;
 let player: FirstPersonPlayer;
 let cutscene: Sequencer | null = null;
 let controlsEnabled = false;
-let reachedExit = false;
 let completed = false;
 let firing = false;
+let paused = false;
 let pointerLocked = false;
 let lightningOn = false;
 let introState: 'waiting' | 'typing' | 'flying' | 'done' = 'waiting';
@@ -72,8 +80,13 @@ function updateObjective() {
 /* Objective beacons are pure screen-space projections. They live on the HUD,
    ignore depth, have no collision, and can never be hidden by terrain/props. */
 function updateBeaconProjections() {
+  const pp = player.position;
   for (const [id, beacon] of beacons) {
     if (objectiveState.get(id) || hud.hidden) {
+      beacon.el.style.display = 'none';
+      continue;
+    }
+    if (Math.hypot(pp.x, pp.z - beacon.z) < 2.8) {
       beacon.el.style.display = 'none';
       continue;
     }
@@ -106,6 +119,7 @@ function markObjective(id: string) {
 function startControls() {
   controlsEnabled = true;
   hint.classList.add('on');
+  SFX.setMusic(true);
 }
 
 function stopControls() {
@@ -118,9 +132,20 @@ function finishIntro() {
   introToken++;
   introOverlay.hidden = true;
   introOverlay.classList.remove('typing', 'fading', 'flying');
+  document.getElementById('studioCredit')?.classList.remove('in');
   cutscene = null;
   cutsceneBars.hidden = true;
   hud.hidden = false;
+  const fog = scene.fog as THREE.FogExp2 | null;
+  if (fog) {
+    fog.color.setHex(0x0b141f);
+    fog.density = 0.0105;
+  } else {
+    scene.fog = new THREE.FogExp2(0x0b141f, 0.0105);
+  }
+  player.camera.far = 520;
+  player.camera.updateProjectionMatrix();
+  level.setCinematicLighting(false);
   updateObjective();
   player.resetPose(level);
   startControls();
@@ -131,10 +156,28 @@ function startIntroFlight() {
   introState = 'flying';
   introOverlay.classList.remove('typing');
   introOverlay.classList.add('flying', 'fading');
-  cutscene = new Sequencer(makeIntroCutscene());
+  level.setCinematicLighting(true);
+  const fog = scene.fog as THREE.FogExp2 | null;
+  if (fog) {
+    fog.color.setHex(0x0b141f);
+    fog.density = 0.0072;
+  } else {
+    scene.fog = new THREE.FogExp2(0x0b141f, 0.0072);
+  }
+  player.camera.far = 850;
+  player.camera.updateProjectionMatrix();
+  const introDef = makeIntroCutscene();
+  introDef.events.push({
+    at: 0.3,
+    callback: () => level.setCinematicLighting(false),
+  });
+  cutscene = new Sequencer(introDef);
   cutscene.onFinished = () => {
     finishIntro();
   };
+  const credit = document.getElementById('studioCredit');
+  window.setTimeout(() => credit?.classList.add('in'), 600);
+  window.setTimeout(() => credit?.classList.remove('in'), 4600);
   setTimeout(() => {
     if (introState === 'flying') introOverlay.hidden = true;
   }, 1400);
@@ -168,8 +211,20 @@ function skipIntro() {
 
 function playOutro() {
   stopControls();
+  hidePause();
+  const pickupPrompt = document.getElementById('p0PickupPrompt') as HTMLDivElement | null;
+  if (pickupPrompt) {
+    pickupPrompt.textContent = '';
+    pickupPrompt.hidden = true;
+  }
+  const pickupToast = document.getElementById('p0Toast') as HTMLDivElement | null;
+  if (pickupToast) pickupToast.hidden = true;
+  if (document.pointerLockElement) document.exitPointerLock();
   cutscene = new Sequencer(makeOutroCutscene());
   cutsceneBars.hidden = false;
+  const exfil = combat?.mission.exfil;
+  const exfilStartZ = exfil?.position.z ?? -985;
+  cutscene.onUpdate = exfil ? createOutroAnimation(exfil, exfilStartZ, level, combat) : null;
   cutscene.onFinished = () => {
     cutscene = null;
     cutsceneBars.hidden = true;
@@ -178,13 +233,37 @@ function playOutro() {
   };
 }
 
+function showPause() {
+  if (paused || completed || cutscene || introState !== 'done') return;
+  if (
+    !openPause(pauseEl, true, () => {
+      firing = false;
+      player?.setAds(false);
+      hint.classList.remove('on');
+    })
+  )
+    return;
+  paused = true;
+}
+
+function hidePause() {
+  closePause(pauseEl);
+  paused = false;
+}
+
+function requestPlayLock() {
+  SFX.init();
+  SFX.resume();
+  canvas.requestPointerLock();
+}
+
 function handleKeys() {
-  player.input.forward = keys.has('KeyW') || keys.has('ArrowUp');
-  player.input.back = keys.has('KeyS') || keys.has('ArrowDown');
-  player.input.left = keys.has('KeyA') || keys.has('ArrowLeft');
-  player.input.right = keys.has('KeyD') || keys.has('ArrowRight');
+  player.input.forward = keys.has('KeyW');
+  player.input.back = keys.has('KeyS');
+  player.input.left = keys.has('KeyA');
+  player.input.right = keys.has('KeyD');
   player.input.sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
-  player.input.crouch = keys.has('AltLeft') || keys.has('AltRight');
+  player.input.jump = keys.has('Space');
 }
 
 async function boot() {
@@ -237,8 +316,24 @@ async function boot() {
     setLoading('正在装配战役规则与战术系统…');
     debug = new PropDebugger(level, scene, player.camera);
     campaign = new CampaignRules();
-    combat = new P0Combat(scene, level, campaign, player);
+    combat = new P0Combat(scene, level, campaign, player, () => {
+      if (completed) return;
+      markObjective('o8');
+      markObjective('o9');
+      const fade = document.getElementById('cgFade');
+      fade?.classList.add('on');
+      requestAnimationFrame(() => requestAnimationFrame(() => { playOutro(); setTimeout(() => fade?.classList.remove('on'), 900); }));
+    });
     viewmodel = new ViewmodelRig(campaign);
+    // Pre-warm the viewmodel pass so the first frame after the intro hand-off
+    // doesn't compile weapon shaders and hitch.
+    viewmodel.root.visible = true;
+    viewmodel.update(0, player);
+    renderer.instance.autoClear = false;
+    renderer.instance.clearDepth();
+    renderer.instance.render(viewmodel.scene, viewmodel.camera);
+    renderer.instance.autoClear = true;
+    viewmodel.root.visible = false;
     crosshair = new Crosshair(crossCanvas);
     crosshair.setHidden(true);
     await wait(0);
@@ -254,6 +349,10 @@ async function boot() {
       combat,
       viewmodel,
       crosshair,
+      SFX,
+      spawnExplosion,
+      renderer,
+      playOutro,
     };
 
     for (const obj of level.objectives) {
@@ -267,7 +366,10 @@ async function boot() {
     }
 
     const assetStatus = document.getElementById('assetStatus');
-    if (assetStatus) assetStatus.textContent = '资产流：纯程序化几何 · 音频：程序化雨/风/雷/脚步';
+    if (assetStatus)
+      assetStatus.textContent = '资产流：程序化地图 · 音频：与单人共用采样（枪声/换弹/脚步）';
+
+    setLoading('正在预热战区渲染管线…'); warmupZoneShaders(renderer, scene);
 
     setLoading('初始化完成，准备进入任务简报');
     loadingSub.textContent = '单击进入任务简报 · ESC 可跳过开场';
@@ -281,7 +383,16 @@ async function boot() {
 
     /* Soldier construction is the heaviest remaining work; let the loading
        screen disappear first, then deploy before the player reaches controls. */
-    setTimeout(() => combat?.ensureEnemiesSpawned(), 0);
+    setTimeout(() => {
+      combat?.ensureEnemiesSpawned();
+      const soldierCam = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.14, 1600);
+      soldierCam.position.set(4, 12, 650);
+      soldierCam.lookAt(0, 0, 600);
+      renderer.instance.render(scene, soldierCam);
+      soldierCam.position.set(-4, 12, 330);
+      soldierCam.lookAt(0, 0, 280);
+      renderer.instance.render(scene, soldierCam);
+    }, 0);
 
     renderer.setAnimationLoop((timeMs) => {
       const dt = Math.min(Math.max((timeMs - lastFrameMs) / 1000, 0), 0.05);
@@ -290,42 +401,43 @@ async function boot() {
 
       if (cutscene) {
         cutscene.update(dt, player.camera);
-      } else if (controlsEnabled && !completed) {
+      } else if (controlsEnabled && !completed && !paused) {
         handleKeys();
-        player.aimEase = campaign?.adsEase ?? 0;
-        const aimFov = campaign?.activeWeapon?.def.adsFov ?? 75;
-        const zoomRatio = Math.tan((aimFov * Math.PI) / 360) / Math.tan((75 * Math.PI) / 360);
-        player.setLookScale(
-          THREE.MathUtils.lerp(1, THREE.MathUtils.clamp(zoomRatio, 0.18, 1), player.aimEase)
+        const gun = campaign?.activeWeapon?.def;
+        player.update(
+          dt,
+          level,
+          {
+            adsTime: gun?.adsTime || 0.2,
+            adsFov: gun?.adsFov || SETTINGS.baseFov,
+            scope: !!gun?.scope,
+            bracedAim: !!gun?.bracedAim,
+          },
+          { reloading: !!campaign?.reloading, switching: !!campaign?.switching }
         );
-        player.adsFov = aimFov;
-        player.scoped = campaign?.activeWeapon?.def.id === 'sr7' && (campaign?.adsEase ?? 0) > 0.55;
-        player.canSprint = !campaign?.ads && !campaign?.reloading;
-        player.reloadMoveScale = campaign?.reloading ? 0.86 : 1;
-        player.update(dt, level);
-        campaign?.update(dt, player.spreadRecoveryMultiplier);
-        stanceText.textContent = player.prone ? '卧倒' : player.crouch ? '蹲伏' : '站立';
-        stanceText.classList.toggle('prone', player.prone);
-
-        if (
-          firing &&
-          combat?.shoot(player.camera, viewmodel?.getMuzzleWorld(_muzzleWorld) || undefined)
-        ) {
-          viewmodel?.punch();
-          crosshair?.onFire();
+        if (campaign) {
+          campaign.ads = player.ads;
+          campaign.adsEase = player.adsEase;
+          campaign.adsK = player.adsK;
         }
+        campaign?.update(dt, player.spreadRecoveryMultiplier);
+        campaign?.updateHud();
+        stanceText.textContent = player.prone ? '卧倒 · 潜行' : player.crouch ? '蹲伏 · 潜行' : '站立';
+        stanceText.classList.toggle('prone', player.prone);
 
         /* objective progression along the linear corridor */
         for (const obj of level.objectives) {
-          if (!objectiveState.get(obj.id) && player.position.z <= obj.trigger) {
+          const p = player.position;
+          if (
+            !objectiveState.get(obj.id) &&
+            (p.z <= obj.trigger || Math.hypot(p.x, p.z - obj.z) < 3)
+          ) {
             markObjective(obj.id);
           }
         }
-        if (!reachedExit && player.position.z <= -84) {
-          reachedExit = true;
-          playOutro();
-        }
         combat?.update(dt, player.position, player.camera);
+        combat?.damageHud.update(dt, campaign?.playerHealth ?? 100, timeMs);
+        updateCombatFx(scene, dt);
       }
 
       level.updateRain(time, dt, player.camera.position);
@@ -336,7 +448,7 @@ async function boot() {
       if (lightning && !lightningOn) SFX.thunder(1.35);
       lightningOn = lightning;
       SFX.update(dt);
-      if (crosshair && controlsEnabled && introState === 'done' && !completed) {
+      if (crosshair && controlsEnabled && introState === 'done' && !completed && !paused) {
         const w = campaign?.activeWeapon;
         if (w) {
           const stanceSpread = player.prone
@@ -356,17 +468,37 @@ async function boot() {
           });
         }
       }
-      const scoped =
-        controlsEnabled &&
-        !completed &&
-        campaign?.activeWeapon?.def.id === 'sr7' &&
-        campaign.adsEase > 0.55;
-      crosshair?.setHidden(!pointerLocked || !controlsEnabled || !!debug?.active || scoped);
+      const adsEase = campaign?.adsEase ?? 0;
+      const hasScope = !!campaign?.activeWeapon?.def.scope;
+      const scopeK = scopeBlend(adsEase, hasScope);
+      const scoped = controlsEnabled && !completed && !paused && scopeK > 0.55;
+      const scopeEl = document.getElementById('scope');
+      scopeEl?.classList.toggle('on', !!scoped);
+      document
+        .getElementById('breathTag')
+        ?.classList.toggle(
+          'on',
+          showBreathHint(scopeK, player.breathLock, player.breath, player.holdingBreath)
+        );
+      const adsHide = adsHidesCrosshair(adsEase, !!campaign?.activeWeapon?.def.bracedAim);
+      crosshair?.setHidden(
+        !pointerLocked || !controlsEnabled || !!debug?.active || scoped || adsHide || paused
+      );
       renderer.render(scene, player.camera);
       if (viewmodel) {
         viewmodel.root.visible =
-          controlsEnabled && !completed && !cutscene && introState === 'done' && !scoped;
+          controlsEnabled && !completed && !cutscene && introState === 'done' && !scoped && !paused;
         if (viewmodel.root.visible) viewmodel.update(dt, player);
+        if (
+          controlsEnabled &&
+          !completed &&
+          !paused &&
+          firing &&
+          combat?.shoot(player.camera, viewmodel.placeWorldMuzzle(player.camera, _muzzleWorld))
+        ) {
+          viewmodel.punch();
+          crosshair?.onFire();
+        }
         if (viewmodel.root.visible) {
           renderer.instance.autoClear = false;
           renderer.instance.clearDepth();
@@ -382,218 +514,81 @@ async function boot() {
   }
 }
 
-/* --- pointer lock & input --- */
-canvas.addEventListener('click', (event) => {
-  SFX.init();
-  if (debug?.active) {
-    debug.trySelect(event.clientX, event.clientY);
-    return;
-  }
-  if (cutscene || completed || introState !== 'done') return;
-  canvas.requestPointerLock();
-});
-
-introOverlay.addEventListener('click', () => {
-  SFX.init();
-  if (introState === 'waiting') void startTyping();
-});
-
-document.addEventListener('pointerlockchange', () => {
-  pointerLocked = document.pointerLockElement === canvas;
-  crosshair?.setHidden(!pointerLocked || !controlsEnabled || !!debug?.active);
-  if (pointerLocked) {
-    hint.classList.remove('on');
-  } else if (controlsEnabled && !cutscene && !completed && !debug?.active) {
-    hint.classList.add('on');
-  }
-});
-
-document.addEventListener('mousemove', (event) => {
-  if (debug?.active) return;
-  if (!cutscene && document.pointerLockElement === canvas && !completed) {
-    player?.addYaw(event.movementX * 0.0022);
-    player?.addPitch(event.movementY * 0.0022);
-  }
-});
-
-document.addEventListener('mousedown', (event) => {
-  if (event.button === 2 && controlsEnabled && !debug?.active && !cutscene && !completed) {
-    event.preventDefault();
-    campaign?.toggleAim();
-    return;
-  }
-  if (event.button !== 0) return;
-  if (debug?.active || cutscene || completed || !controlsEnabled) return;
-  if (document.pointerLockElement !== canvas) return;
-  firing = true;
-  if (campaign) campaign.triggerReleased = true;
-  if (combat?.shoot(player.camera, viewmodel?.getMuzzleWorld(_muzzleWorld) || undefined)) {
-    viewmodel?.punch();
-    crosshair?.onFire();
-  }
-});
-
-document.addEventListener('mouseup', (event) => {
-  if (event.button === 0) {
-    firing = false;
-    if (campaign) campaign.triggerReleased = true;
-  }
-});
-
-addEventListener(
-  'wheel',
-  (event) => {
-    if (!debug?.active || !debug.selected) return;
-    event.preventDefault();
-    debug.nudge(event.deltaY > 0 ? -0.05 : 0.05);
+bindCampaignInput({
+  canvas,
+  pauseEl,
+  hint,
+  introOverlay,
+  cutsceneBars,
+  completePanel,
+  keys,
+  muzzle: _muzzleWorld,
+  showPause,
+  hidePause,
+  requestPlayLock,
+  skipIntro,
+  startControls,
+  startTyping,
+  get paused() {
+    return paused;
   },
-  { passive: false }
-);
-
-addEventListener('contextmenu', (event) => {
-  if (debug?.active) {
-    event.preventDefault();
-    debug.clearSelection();
-    return;
-  }
-  if (controlsEnabled && !cutscene && !completed) event.preventDefault();
+  set paused(value) {
+    paused = value;
+  },
+  get firing() {
+    return firing;
+  },
+  set firing(value) {
+    firing = value;
+  },
+  get pointerLocked() {
+    return pointerLocked;
+  },
+  set pointerLocked(value) {
+    pointerLocked = value;
+  },
+  get controlsEnabled() {
+    return controlsEnabled;
+  },
+  get completed() {
+    return completed;
+  },
+  get introState() {
+    return introState;
+  },
+  get cutscene() {
+    return cutscene;
+  },
+  set cutscene(value) {
+    cutscene = value;
+  },
+  get debug() {
+    return debug;
+  },
+  get player() {
+    return player;
+  },
+  get campaign() {
+    return campaign;
+  },
+  get combat() {
+    return combat;
+  },
+  get viewmodel() {
+    return viewmodel;
+  },
+  get level() {
+    return level;
+  },
+  get renderer() {
+    return renderer;
+  },
+  get screenRain() {
+    return screenRain;
+  },
+  get crosshair() {
+    return crosshair;
+  },
 });
-
-addEventListener('keydown', (event) => {
-  SFX.init();
-  keys.add(event.code);
-  if (
-    (event.code === 'ShiftLeft' || event.code === 'ShiftRight') &&
-    keys.has('KeyW') &&
-    introState === 'done' &&
-    controlsEnabled &&
-    !cutscene
-  ) {
-    campaign?.cancelReload();
-  }
-  if (event.code === 'Space') player.input.jump = true;
-  if (
-    event.code === 'KeyZ' &&
-    introState === 'done' &&
-    controlsEnabled &&
-    !cutscene &&
-    !event.repeat
-  ) {
-    player.proneRequested = true;
-  }
-  if (event.code === 'F2' && introState === 'done') {
-    event.preventDefault();
-    debug?.toggle();
-  }
-  if (event.code === 'PageUp' && debug?.active) {
-    event.preventDefault();
-    debug.nudge(0.05);
-  }
-  if (event.code === 'PageDown' && debug?.active) {
-    event.preventDefault();
-    debug.nudge(-0.05);
-  }
-  if (event.code === 'KeyL' && debug?.active) {
-    event.preventDefault();
-    debug.writeLog();
-  }
-  if (event.code === 'KeyG' && level && introState === 'done') {
-    if (debug?.active) {
-      const count = level.resnapProps();
-      const fixed = debug.autoFix();
-      const assetStatus = document.getElementById('assetStatus');
-      if (assetStatus)
-        assetStatus.textContent = `一键贴地完成 · 重采样 ${count} 组 · 自动修正 ${fixed} 处`;
-    } else if (!event.repeat && controlsEnabled && !cutscene && combat) {
-      combat.throwGrenade('lethal', player.camera);
-    }
-  }
-  if (
-    event.code === 'KeyQ' &&
-    introState === 'done' &&
-    !event.repeat &&
-    controlsEnabled &&
-    !cutscene &&
-    !debug?.active
-  ) {
-    combat?.throwGrenade('tactical', player.camera);
-  }
-  if (
-    event.code === 'KeyF' &&
-    introState === 'done' &&
-    !event.repeat &&
-    controlsEnabled &&
-    !cutscene &&
-    !debug?.active
-  ) {
-    combat?.tryInteractWeapon(player.position);
-  }
-  if (event.code === 'KeyR' && introState === 'done' && !event.repeat && controlsEnabled) {
-    campaign?.startReload();
-  }
-  if (event.code === 'KeyB' && introState === 'done' && !event.repeat && controlsEnabled) {
-    const w = campaign?.activeWeapon;
-    if (w?.def.semiToggle) {
-      w.semi = !w.semi;
-      SFX.boltClick();
-      campaign?.updateHud();
-    }
-  }
-  if ((event.code === 'Digit1' || event.code === 'Digit2') && introState === 'done') {
-    campaign?.switchSlot(event.code === 'Digit1' ? 0 : 1);
-  }
-  if (event.code === 'Escape') {
-    firing = false;
-    if (introState !== 'done') {
-      skipIntro();
-      return;
-    }
-    if (cutscene) {
-      const done = cutscene.finished;
-      cutscene.skip();
-      if (!done) {
-        /* skip() marks it finished synchronously on next update; force cleanup */
-        cutscene = null;
-        cutsceneBars.hidden = true;
-        if (completed) completePanel.hidden = false;
-        else {
-          player.resetPose(level);
-          startControls();
-        }
-      }
-    }
-  }
-});
-
-addEventListener('keyup', (event) => {
-  keys.delete(event.code);
-  if (event.code === 'Space') player.input.jump = false;
-});
-
-addEventListener('blur', () => {
-  keys.clear();
-  player.input.jump = false;
-  firing = false;
-});
-
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    keys.clear();
-    player.input.jump = false;
-    firing = false;
-  }
-});
-
-addEventListener('resize', () => {
-  if (!renderer) return;
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  player?.resize();
-  screenRain?.resize();
-  viewmodel?.resize();
-  crosshair?.layout();
-});
-
-document.getElementById('restartBtn')?.addEventListener('click', () => location.reload());
 
 void boot();

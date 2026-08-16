@@ -3,6 +3,9 @@ import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
 import audioData from '../../shared/audio-params.json';
 import missionsData from '../../shared/missions.json';
 import { buildHorizonBackdrop } from './backdrop';
+import { makeWaterMaterial, placeGroundScatter, placeMissionSetDressing, updateWaterMaterial } from './mission-world';
+import { placeEnemyCamps } from './enemy-camps';
+import { spawnWaterSplash } from './fx';
 import { makeRainTexture } from './rain-texture';
 import {
   hash2,
@@ -12,17 +15,13 @@ import {
   terrainHeight,
   windAt,
 } from './terrain';
+import { placeCrashWrecks } from './wreckage';
 
-/* ---------------------------------------------------------------------------
-   P0 graybox map: a brand-new linear forest valley, not a reuse of any
-   existing yard/nuke geometry. Path runs north (spawn, +Z) to south (bridge).
-   ------------------------------------------------------------------------- */
-
-const PATH_LENGTH = 168;
-const GROUND_SPAN = 1600;
+const PATH_LENGTH = 2000;
+const GROUND_SPAN = 2400;
 const PATH_HALF_W = 15;
-const SPAWN_Z = 82;
-const BRIDGE_Z = -82;
+const SPAWN_Z = 1000;
+const BRIDGE_Z = -1000;
 
 export interface LevelObstacle {
   x: number;
@@ -46,6 +45,9 @@ export interface P0Level {
   groundY(x: number, z: number): number;
   updateRain(time: number, dt: number, cameraPos: THREE.Vector3): void;
   updateLightning(time: number, dt: number): boolean;
+  waterDepth(x: number, z: number): number;
+  spawnWaterSplashAt(point: THREE.Vector3): void;
+  setCinematicLighting(on: boolean): void;
   setObjectivePassed(id: string): void;
   registerPropSnap(fn: () => void): void;
   resnapProps(): number;
@@ -62,16 +64,19 @@ export function buildSupplyCrate(): THREE.Group {
     roughness: 0.8,
     metalness: 0.15,
   });
+  bodyMat.userData.surfaceKey = 'crate';
   const trimMat = new THREE.MeshStandardMaterial({
     color: 0x24251f,
     roughness: 0.7,
     metalness: 0.3,
   });
+  trimMat.userData.surfaceKey = 'metal';
   const strapMat = new THREE.MeshStandardMaterial({
     color: 0x1b1c17,
     roughness: 0.6,
     metalness: 0.2,
   });
+  strapMat.userData.surfaceKey = 'metal';
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.72, 0.62), bodyMat);
   body.position.y = 0.36;
@@ -101,13 +106,6 @@ export function buildSupplyCrate(): THREE.Group {
   return crate;
 }
 
-/* ---------------------------------------------------------------------------
-   Horizon backdrop: one procedural canvas texture on an open cylinder gives
-   the illusion of endless rolling ridges in every direction. It is low-poly
-   (48 segments) and generated entirely in code — no image files. `fog:false`
-   keeps it visible beyond the fog wall, exactly like a real distant range.
-   ------------------------------------------------------------------------- */
-
 export function buildP0Level(scene: THREE.Scene): P0Level {
   const group = new THREE.Group();
   scene.add(group);
@@ -115,8 +113,6 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   buildHorizonBackdrop(scene);
   const propSnaps: Array<() => void> = [];
 
-  /* --- terrain: a wide valley floor whose sides keep climbing beyond the
-     playable corridor; fog swallows the far distance before any edge appears */
   const groundGeo = new THREE.PlaneGeometry(280, GROUND_SPAN, 112, 168);
   groundGeo.rotateX(-Math.PI / 2);
   const groundPos = groundGeo.attributes.position as THREE.BufferAttribute;
@@ -134,8 +130,6 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   (ground as unknown as { raycast: typeof acceleratedRaycast }).raycast = acceleratedRaycast;
   group.add(ground);
 
-  /* Exact rendered-surface height: a downward ray against the actual ground
-     mesh. This is the projection half of the overlap solver. */
   const groundRay = new THREE.Raycaster();
   const groundRayDir = new THREE.Vector3(0, -1, 0);
   const groundRayOrigin = new THREE.Vector3();
@@ -153,17 +147,14 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     return y;
   }
 
-  /* --- instanced forest ---
-     Two populations: a dense belt on both flanks that reads as an unbroken
-     tree wall, plus scattered background trees on the rising valley sides. */
-  const TRUNKS = 520;
-  const trunkGeo = new THREE.CylinderGeometry(0.12, 0.2, 2.4, 5);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x1e1813, roughness: 0.95 });
+  const TRUNKS = 1800;
+  const trunkGeo = new THREE.CylinderGeometry(0.12, 0.2, 2.4, 7);
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2a211a, roughness: 0.95 });
   const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, TRUNKS);
   trunkMesh.castShadow = true;
   trunkMesh.userData.debugKeyPrefix = 'trunk';
-  const canopyGeo = new THREE.ConeGeometry(1.05, 2.6, 6);
-  const canopyMat = new THREE.MeshStandardMaterial({ color: 0x102019, roughness: 0.9 });
+  const canopyGeo = new THREE.ConeGeometry(1.05, 2.6, 8);
+  const canopyMat = new THREE.MeshStandardMaterial({ color: 0x1a3525, roughness: 0.88 });
   const canopyMesh = new THREE.InstancedMesh(canopyGeo, canopyMat, TRUNKS);
   canopyMesh.castShadow = true;
   canopyMesh.userData.debugKeyPrefix = 'canopy';
@@ -174,54 +165,57 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   const _pos = new THREE.Vector3();
   const _scale = new THREE.Vector3();
   let guard = 0;
-  while (placed < TRUNKS && guard < 9000) {
+  while (placed < TRUNKS && guard < 12000) {
     guard++;
     const side = hash2(guard * 1.3, 7.1) > 0.5 ? 1 : -1;
     const flank = guard < 390;
+    const boundaryBand = guard >= 390 && guard < 640;
     const x = flank
-      ? side * (9.5 + hash2(guard * 1.7, 0.31) * 24)
-      : (hash2(guard * 1.7, 0.31) * 2 - 1) * 78;
+      ? side * (7.4 + hash2(guard * 1.7, 0.31) * 21)
+      : boundaryBand ? side * (7.4 + hash2(guard * 1.7, 0.31) * 27) : (hash2(guard * 1.7, 0.31) * 2 - 1) * 108;
     const zr = hash2(guard * 3.3, 0.77) * 2 - 1;
-    const z = guard < 300 ? zr * (PATH_LENGTH / 2 + 10) : zr * (GROUND_SPAN / 2 - 140);
+    const z = boundaryBand
+      ? (hash2(guard * 5.1, 0.9) > 0.5 ? 1 : -1) * (PATH_LENGTH / 2 + 40 + hash2(guard * 2.2, 1.1) * 130)
+      : zr * (guard < 300 ? PATH_LENGTH / 2 + 10 : GROUND_SPAN / 2 - 140);
     if (Math.abs(x) < 6.5 && z > BRIDGE_Z - 12 && z < SPAWN_Z + 8) continue;
     const key = `${Math.round(x)}:${Math.round(z)}`;
     if (used.has(key)) continue;
     used.add(key);
-    const s = 0.65 + hash2(x * 0.31, z * 0.77) * 1.35;
-    treeData.push({ x, z, s, hash: hash2(x, z) });
+    const s = 0.65 + hash2(x * 0.31, z * 0.77) * 1.5;
+    const h = hash2(x, z);
+    treeData.push({ x, z, s, hash: h });
     const support = rayGroundHeight(x, z);
     const trunkY = support + 1.2 * s - 0.03;
     _pos.set(x, trunkY, z);
     _scale.set(s, s, s);
-    _q.identity();
+    _q.setFromEuler(new THREE.Euler((h - 0.5) * 0.08, h * Math.PI * 2, (h - 0.5) * 0.08));
     const m = new THREE.Matrix4();
     m.compose(_pos, _q, _scale);
     trunkMesh.setMatrixAt(placed, m);
+    trunkMesh.setColorAt(placed, new THREE.Color().setHSL(0.065 + h * 0.02, 0.3, 0.09 + h * 0.04));
     const canopyY = trunkY + 1.2 * s + 1.3 * s - 0.35 * s;
     _pos.set(x, canopyY, z);
     const m2 = new THREE.Matrix4();
     m2.compose(_pos, _q, _scale);
     canopyMesh.setMatrixAt(placed, m2);
+    canopyMesh.setColorAt(placed, new THREE.Color().setHSL(0.33 + h * 0.08, 0.5, 0.1 + h * 0.07));
     placed++;
   }
   const resnapTrees = () => {
     for (let i = 0; i < treeData.length; i++) {
-      const { x, z, s } = treeData[i];
-      const support = rayGroundHeight(x, z);
-      const trunkY = support + 1.2 * s - 0.03;
+      const { x, z, s, hash } = treeData[i];
+      const trunkY = rayGroundHeight(x, z) + 1.2 * s - 0.03;
       _pos.set(x, trunkY, z);
       _scale.set(s, s, s);
-      _q.identity();
-      const m = new THREE.Matrix4();
-      m.compose(_pos, _q, _scale);
-      trunkMesh.setMatrixAt(i, m);
+      _q.setFromEuler(new THREE.Euler((hash - 0.5) * 0.08, hash * Math.PI * 2, (hash - 0.5) * 0.08));
+      trunkMesh.setMatrixAt(i, new THREE.Matrix4().compose(_pos, _q, _scale));
       _pos.set(x, trunkY + 2.15 * s, z);
-      const m2 = new THREE.Matrix4();
-      m2.compose(_pos, _q, _scale);
-      canopyMesh.setMatrixAt(i, m2);
+      canopyMesh.setMatrixAt(i, new THREE.Matrix4().compose(_pos, _q, _scale));
     }
     trunkMesh.instanceMatrix.needsUpdate = true;
     canopyMesh.instanceMatrix.needsUpdate = true;
+    if (trunkMesh.instanceColor) trunkMesh.instanceColor.needsUpdate = true;
+    if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true;
   };
   resnapTrees();
   propSnaps.push(resnapTrees);
@@ -231,17 +225,20 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
 
   /* Low undergrowth fills the gaps in the flanking belt so the corridor edge
      is a wall of vegetation, not a visible boundary. */
-  const BUSHES = 430;
-  const bushGeo = new THREE.ConeGeometry(0.55, 1.25, 5);
-  const bushMat = new THREE.MeshStandardMaterial({ color: 0x141f16, roughness: 0.95 });
+  const BUSHES = 1600;
+  const bushGeo = new THREE.ConeGeometry(0.62, 1.5, 7);
+  const bushMat = new THREE.MeshStandardMaterial({ color: 0x1f3822, roughness: 0.92 });
   const bushMesh = new THREE.InstancedMesh(bushGeo, bushMat, BUSHES);
   bushMesh.castShadow = false;
   bushMesh.userData.debugKeyPrefix = 'bush';
   const bushData: Array<{ x: number; z: number; s: number }> = [];
   for (let i = 0; i < BUSHES; i++) {
     const side = i % 2 ? 1 : -1;
-    const x = side * (8 + hash2(i * 1.9, 3.1) * 22) + (hash2(i, 9.9) - 0.5) * 2.4;
-    const z = (hash2(i * 4.7, 5.3) * 2 - 1) * (PATH_LENGTH / 2 + 4);
+    const x = side * (6.6 + hash2(i * 1.9, 3.1) * 20) + (hash2(i, 9.9) - 0.5) * 2.4;
+    const z = i < 430
+      ? (hash2(i * 4.7, 5.3) * 2 - 1) * (PATH_LENGTH / 2 + 4)
+      : (hash2(i * 4.7, 5.3) > 0.5 ? 1 : -1) *
+        (PATH_LENGTH / 2 + 34 + hash2(i, 17.7) * 118);
     const s = 0.7 + hash2(i * 2.3, 8.1) * 1.2;
     bushData.push({ x, z, s });
     const support = rayGroundHeight(x, z);
@@ -269,16 +266,16 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   propSnaps.push(resnapBushes);
   group.add(bushMesh);
 
-  /* --- rocks and fallen logs: gameplay cover + collision --- */
   const obstacles: LevelObstacle[] = [];
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x3a3d3b, roughness: 0.92 });
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x5a615d, roughness: 0.95, metalness: 0.03 });
   const logMat = new THREE.MeshStandardMaterial({ color: 0x211b13, roughness: 0.94 });
-  for (let i = 0; i < 34; i++) {
-    const x = (hash2(i * 9.1, 1.3) * 2 - 1) * 12;
-    const z = 74 - i * 4.4 - hash2(i, 5.7) * 2;
-    if (Math.abs(x) < 1.4) continue;
-    const r = 0.5 + hash2(i * 1.3, 3.9) * 0.8;
-    const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), rockMat);
+  for (let i = 0; i < 84; i++) {
+    const side = i % 2 ? 1 : -1;
+    const x = side * (4.2 + hash2(i * 9.1, 1.3) * 6.4);
+    const z = 960 - i * 22.5 - hash2(i, 5.7) * 8;
+    if (Math.abs(z) < 6) continue;
+    const r = 0.35 + hash2(i * 1.3, 3.9) * 0.6;
+    const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), rockMat);
     rock.name = 'P0_PROP_ROCK';
     rock.userData.debugId = `rock:${i}`;
     rock.userData.debugKind = 'rock';
@@ -308,9 +305,9 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     propSnaps.push(snap);
     obstacles.push({ x, z, r: r * 0.85 });
   }
-  for (let i = 0; i < 16; i++) {
-    const x = (hash2(i * 5.3, 9.9) * 2 - 1) * 9;
-    const z = 58 - i * 8.2;
+  for (let i = 0; i < 22; i++) {
+    const x = (hash2(i * 5.3, 9.9) * 2 - 1) * 8.5;
+    const z = 930 - i * 92;
     const angle = Math.PI / 2 + hash2(i, 1.1) * 0.5;
     const log = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 3.4, 7), logMat);
     log.name = 'P0_PROP_LOG';
@@ -339,14 +336,15 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
       obstacles.push({ x: x + dx * t, z: z + dz * t, r: 0.42 });
     }
   }
+  placeCrashWrecks(group, obstacles, propSnaps, rayGroundHeight);
+  placeMissionSetDressing(group, obstacles, propSnaps, rayGroundHeight);
+  placeEnemyCamps(group, obstacles, propSnaps, rayGroundHeight);
+  const animateGroundScatter = placeGroundScatter(group, propSnaps, rayGroundHeight);
 
-  /* Objective beacons are now screen-space projections owned by the HUD.
-     They have no 3D mesh and no collision, so terrain can never occlude them. */
   const objectives: LevelObjective[] = missionsData.mission01.objectives as LevelObjective[];
   const gateGroups = new Map<string, THREE.Group>();
   for (const obj of objectives) gateGroups.set(obj.id, new THREE.Group());
 
-  /* --- bridge at the exit --- */
   const bridgeY = terrainHeight(0, BRIDGE_Z);
   const deck = new THREE.Mesh(
     new THREE.BoxGeometry(14, 0.5, 16),
@@ -395,18 +393,17 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   }
   group.add(barrierGroup);
 
-  /* --- puddles: dark wet ground with animated expanding ripples --- */
   const puddleData: Array<{
     x: number;
     z: number;
     r: number;
     ripples: Array<{ mesh: THREE.Mesh; phase: number; speed: number }>;
   }> = [];
-  for (let i = 0; i < 26; i++) {
-    const x = (hash2(i * 3.1, 11.7) * 2 - 1) * 8;
-    const z = 72 - i * 5.4 - hash2(i, 17.3) * 1.8;
-    if (Math.abs(z) > 80) continue;
-    const r = 0.55 + hash2(i * 1.7, 23.9) * 1.25;
+  for (let i = 0; i < 70; i++) {
+    const near = i % 3 === 0;
+    const x = (hash2(i * 3.1, 11.7) * 2 - 1) * (near ? 3.6 : 7.5);
+    const z = 950 - i * 27.8 - hash2(i, 17.3) * 5;
+    const r = 0.9 + hash2(i * 1.7, 23.9) * 1.8;
     const y = rayGroundHeight(x, z);
     const puddle = new THREE.Group();
     const stain = new THREE.Mesh(
@@ -422,16 +419,7 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     stain.position.y = 0.025;
     stain.userData.debugKind = 'decor';
     puddle.add(stain);
-    const water = new THREE.Mesh(
-      new THREE.CircleGeometry(r, 22),
-      new THREE.MeshStandardMaterial({
-        color: 0x16232e,
-        roughness: 0.08,
-        metalness: 0.55,
-        transparent: true,
-        opacity: 0.92,
-      })
-    );
+    const water = new THREE.Mesh(new THREE.CircleGeometry(r, 22), makeWaterMaterial());
     water.rotation.x = -Math.PI / 2;
     water.position.y = 0.04;
     water.receiveShadow = true;
@@ -464,12 +452,13 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
   /* --- rain: layered soft sprite streaks pooled around the camera --- */
   const rainTextures = [-2, -1, 0, 1, 2].map(makeRainTexture);
   const rainLayerDefs = audioData.environment.rainLayers;
-  const rainCam = new THREE.Vector3(0, 2, 82);
+  const rainCam = new THREE.Vector3(0, 2, SPAWN_Z);
   const rainLayers = rainLayerDefs.map((def) => {
+    const count = Math.floor(def.count * 2.4);
     const geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(def.count * 3);
-    const uv = new Float32Array(def.count * 2);
-    const speed = new Float32Array(def.count);
+    const pos = new Float32Array(count * 3);
+    const uv = new Float32Array(count * 2);
+    const speed = new Float32Array(count);
     const spawn = (i: number, cam: THREE.Vector3, anywhere: boolean) => {
       const x = cam.x + (Math.random() * 2 - 1) * def.spread;
       const z = cam.z + (Math.random() * 2 - 1) * def.spread * 1.25;
@@ -483,14 +472,14 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
       uv[i * 2 + 1] = (z - cam.z) / def.spread;
       speed[i] = def.minSpeed + Math.random() * (def.maxSpeed - def.minSpeed);
     };
-    for (let i = 0; i < def.count; i++) spawn(i, rainCam, true);
+    for (let i = 0; i < count; i++) spawn(i, rainCam, true);
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     const mat = new THREE.PointsMaterial({
       map: rainTextures[2],
-      size: def.size,
+      size: def.size * 1.8,
       transparent: true,
-      opacity: def.opacity,
+      opacity: 1,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       sizeAttenuation: true,
@@ -529,11 +518,28 @@ export function buildP0Level(scene: THREE.Scene): P0Level {
     obstacles,
     terrainHeight,
     groundY: rayGroundHeight,
-    bounds: { minX: -15, maxX: 15, minZ: -92, maxZ: 88 },
+    bounds: { minX: -15, maxX: 15, minZ: -1020, maxZ: 1020 },
+    setCinematicLighting(on: boolean) { sun.intensity = on ? 8.0 : 2.4; hemi.intensity = on ? 3.2 : 1.35; amb.intensity = on ? 2.0 : 0.85; },
+    waterDepth(x: number, z: number) {
+      if (Math.abs(z + 520) < 2.9 && Math.abs(x) < 8) return 0.12;
+      let depth = 0;
+      for (const pd of puddleData) {
+        const d = Math.hypot(x - pd.x, z - pd.z);
+        if (d < pd.r) depth = Math.max(depth, 0.05 * (1 - d / pd.r));
+      }
+      return depth;
+    },
+    spawnWaterSplashAt(point: THREE.Vector3) { spawnWaterSplash(scene, point); },
     updateRain(time: number, dt: number, cameraPos: THREE.Vector3) {
+      updateWaterMaterial(dt);
+      animateGroundScatter(time, cameraPos);
       const wind = windAt(time);
       const slantIdx = THREE.MathUtils.clamp(Math.round(wind) + 2, 0, rainTextures.length - 1);
+      const jumped = Math.abs(cameraPos.z - rainCam.z) > 18;
       rainCam.copy(cameraPos);
+      if (jumped)
+        for (const layer of rainLayers)
+          for (let i = 0; i < layer.pos.length / 3; i++) layer.spawn(i, rainCam, false);
       for (const layer of rainLayers) {
         const attr = layer.geo.attributes.position as THREE.BufferAttribute;
         const arr = attr.array as Float32Array;

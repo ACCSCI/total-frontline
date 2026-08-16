@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const output = new URL('../dist/', import.meta.url);
@@ -38,7 +39,16 @@ const movementText = [
 ].join('\n');
 await writeFile(new URL('../src/generated-movement.ts', import.meta.url), movementText);
 
-await rm(output, { recursive: true, force: true });
+execFileSync(process.execPath, [fileURLToPath(new URL('generate-gameplay.mjs', import.meta.url))], {
+  cwd: fileURLToPath(root),
+  stdio: 'inherit',
+});
+
+await mkdir(output, { recursive: true });
+for (const name of await readdir(fileURLToPath(output))) {
+  if (name === 'campaign') continue;
+  await rm(new URL(name, output), { recursive: true, force: true });
+}
 await mkdir(new URL('js/', output), { recursive: true });
 
 execFileSync(process.execPath, [compiler, '--project', 'tsconfig.json'], {
@@ -53,6 +63,16 @@ for (const file of ['index.html', 'cover-total-frontline.png']) {
 for (const directory of ['screenshots', 'assets', 'shared']) {
   await cp(new URL(`../${directory}/`, import.meta.url), new URL(`${directory}/`, output), {
     recursive: true,
+  });
+}
+
+const campaignIndex = new URL('campaign/index.html', output);
+try {
+  await access(campaignIndex);
+} catch {
+  execFileSync(process.execPath, [fileURLToPath(new URL('../campaign/node_modules/vite/bin/vite.js', import.meta.url)), 'build'], {
+    cwd: fileURLToPath(new URL('../campaign/', import.meta.url)),
+    stdio: 'inherit',
   });
 }
 

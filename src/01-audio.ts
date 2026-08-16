@@ -372,12 +372,33 @@ const SFX: any = (() => {
     tone({ type: 'sine', f0: 160, f1: 60, dur: 0.1, gain: 0.16 * v, pan });
   }
   function hitBeep(head) {
-    tone({ type: 'sine', f0: head ? 1900 : 1350, dur: 0.045, gain: 0.13 });
-    if (head) tone({ type: 'sine', f0: 2550, dur: 0.05, gain: 0.11, delay: 0.045 });
+    /* Classic CoD hitmarker: a dry mid-high "fwip" tick, not a sine beep.
+       Readable in gunfire, unpleasant in isolation — that's the point. */
+    noise({
+      type: 'bandpass',
+      freq: head ? 4200 : 3100,
+      q: head ? 5.5 : 4.2,
+      gain: head ? 0.28 : 0.22,
+      dur: 0.022,
+      atk: 0.0008,
+    });
+    tone({
+      type: 'triangle',
+      f0: head ? 2450 : 1950,
+      f1: head ? 1800 : 1400,
+      dur: 0.018,
+      atk: 0.0008,
+      gain: 0.09,
+      lp: 5200,
+    });
+    if (head)
+      tone({ type: 'square', f0: 4300, f1: 2600, dur: 0.016, atk: 0.0008, gain: 0.05, lp: 7000 });
   }
   function killChime() {
-    tone({ type: 'sine', f0: 900, dur: 0.07, gain: 0.11 });
-    tone({ type: 'sine', f0: 1350, dur: 0.11, gain: 0.11, delay: 0.06 });
+    /* CoD kill confirm: thicker, lower tick + a short resolve. Not a UI chime. */
+    noise({ type: 'bandpass', freq: 1500, q: 3.2, gain: 0.2, dur: 0.038, atk: 0.001 });
+    tone({ type: 'triangle', f0: 780, f1: 340, dur: 0.085, atk: 0.001, gain: 0.13, lp: 2400 });
+    tone({ type: 'sine', f0: 210, f1: 88, dur: 0.09, atk: 0.002, gain: 0.09, lp: 600 });
   }
   function enemyDeath(pan, dist) {
     const v = clamp(1 - dist / 50, 0.15, 1);

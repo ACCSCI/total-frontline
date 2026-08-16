@@ -24,10 +24,11 @@ The source page explicitly states that the library may be used without royalty o
 
 - `voice/*.mp3`: original Mandarin tactical callouts generated for Total Frontline with MiniMax `speech-2.8-hd` (`male-qn-jingying`).
 - `music/frontline-loop.mp3`: original instrumental tactical electronic loop generated for Total Frontline with MiniMax `music-3.0`, 110 BPM in A minor.
-- `music/main-menu-theme.mp3`: original high-impact cinematic military/industrial main-menu theme generated for Total Frontline with MiniMax `music-3.0`, 100 BPM in D minor; built around an immediate original five-note low-brass/low-string motif, tactical drums, industrial impacts and a sub-synth pulse, with a mid-track climax and deliberate UI headroom. The prompt requested no vocals, existing artists, tracks, or recognizable melodies; the delivered MP3 was linearly loudness-normalized to preserve dynamics while preventing clipping.
+- `music/main-menu-theme-epic-1.mp3` and `main-menu-theme-epic-3.mp3`: the two active homepage BGM candidates. Generated with MiniMax `music-3.0` (see `scripts/generate-menu-music-variants.py`), post-processed into seamless loops (epic-1 ~245s, epic-3 ~134s). Both are instrumental, no vocals, epic/tragic war-game atmosphere. On each main-menu open the game randomly picks one of these two tracks.
 - `weapons/layers/*-transient.ogg`: locally imported game weapon reports, edited and mastered from the retained WAV source library.
+- `weapons/layers/*-suppressed.ogg`: first-person silenced reports from the same Modern Warfare 2 fire library (M4 / USP-SD / P90 / Magpul / shotgun / sniper / M240). Used only when a suppressor is equipped; unsuppressed reports stay on the transient layers.
 - `weapons/layers/*-mech.ogg` and `*-tail.ogg`: original mechanisms and outdoor tails generated with ByteDance Seed Audio; retained as spare assets but no longer layered over the imported reports.
-- Generated on 2026-08-13. Prompts did not request or reference any artist, soundtrack, protected character, or existing composition.
+- Generated on 2026-08-13. The menu theme was re-generated with MiniMax music-3.0 on 2026-08-15. No prompt referenced any artist, soundtrack, protected character, or existing composition.
 
 MiniMax-generated files are project-specific generated outputs rather than third-party stock recordings. Their use remains subject to the MiniMax service terms applicable to the account that generated them.
 

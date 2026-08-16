@@ -407,6 +407,7 @@ function makeEnemy(i) {
     deathT: 0,
     aimPitch: 0,
     gunDropped: false,
+    tagRevealT: 0,
     combatBlend: 0,
     idleT: rand(0, 2),
     repathT: 0,

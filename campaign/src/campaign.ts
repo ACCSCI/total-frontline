@@ -1,31 +1,43 @@
-import * as THREE from 'three';
-import loadoutData from '../../shared/loadout.json';
+import type * as THREE from 'three';
+import {
+  addThrowables,
+  applyAttachmentMods,
+  beginMeleeClock,
+  campaignStartAttachments,
+  canStartMelee,
+  canThrow,
+  consumeThrow,
+  createThrowInventory,
+  discardReloadCheckpoint,
+  type EnemyKind,
+  type EnemyTactic,
+  type FlyingThrow,
+  fireInterval,
+  interactGroundWeapon,
+  interruptReload,
+  interruptShotgunReloadForFire,
+  type ReloadStageName,
+  type ReloadState,
+  reloadBlocksFire,
+  startReload,
+  type ThrowableKind,
+  type ThrowInventory,
+  tryConsumeShot,
+  updateReload,
+} from '../../shared/gameplay';
 import { SFX } from './sfx';
 import type { SoldierRig } from './soldier';
 import type { WeaponDef } from './weapon-defs';
 import { PRIMARY_WEAPONS } from './weapon-defs';
+import { fireView, reloadView } from './weapon-runtime';
 
 export type { WeaponDef } from './weapon-defs';
 export { PRIMARY_WEAPONS } from './weapon-defs';
-
-export interface ReloadState {
-  progress: number;
-  duration: number;
-  empty: boolean;
-  rounds: number;
-  phase: number;
-  magOut: boolean;
-  inserted: boolean;
-  actionDone: boolean;
-  active: boolean;
-  soundLift: boolean;
-  soundOut: boolean;
-  soundIn: boolean;
-  soundAction: boolean;
-}
+export type { ReloadState };
 
 export interface CarriedWeapon {
   def: WeaponDef;
+  attachments: Record<string, string>;
   mag: number;
   reserve: number;
   semi: boolean;
@@ -59,8 +71,18 @@ export interface Enemy {
   soldier: SoldierRig;
   strafeDir: number;
   engaged: boolean;
+  suspicion: number;
+  lookScan: number;
+  patrolScale: number;
   reactionT: number;
+  lastSeenT: number;
+  lastSeenX: number;
+  lastSeenZ: number;
+  stuckT: number;
+  stuckX: number;
+  stuckZ: number;
   hitFlash: number;
+  tagRevealT: number;
   deathT: number;
   walkPhase: number;
   speed: number;
@@ -70,30 +92,25 @@ export interface Enemy {
   gunDropped: boolean;
   gunVel: THREE.Vector3 | null;
   gunAV: THREE.Vector3 | null;
+  tactic: EnemyTactic;
+  tacticT: number;
+  idleRole?: 'eat' | 'camp' | 'lean' | 'patrol';
+  reloadT: number;
+  rounds: number;
+  kind: EnemyKind;
 }
 
 export interface ThrowableProjectile {
   mesh: THREE.Mesh;
-  velocity: THREE.Vector3;
-  kind: 'lethal' | 'tactical';
-  life: number;
+  kind: ThrowableKind;
+  body: FlyingThrow;
 }
-
-const RELOAD_STAGE: Record<string, { remove: number; insert: number; action: number }> = {
-  m4: { remove: 0.055, insert: 0.7, action: 0.83 },
-  ak12: { remove: 0.3, insert: 0.72, action: 0.91 },
-  p9: { remove: 0.28, insert: 0.66, action: 0.9 },
-  sr7: { remove: 0.34, insert: 0.86, action: 0.98 },
-  p90: { remove: 0.31, insert: 0.72, action: 0.91 },
-};
 
 export class CampaignRules {
   slots: [CarriedWeapon | null, CarriedWeapon | null];
   activeSlot = 0;
   playerHealth = 100;
-  tacticals = loadoutData.campaign.throwables.tactical.start;
-  lethals = loadoutData.campaign.throwables.lethal.start;
-  readonly maxThrowables = loadoutData.campaign.throwables.lethal.max;
+  throws: ThrowInventory = createThrowInventory();
   reloadT = 0;
   reloadDuration = 0;
   reloadEmpty = false;
@@ -109,18 +126,23 @@ export class CampaignRules {
   triggerReleased = true;
   burstCount = 0;
   burstIdle = 0;
+  lastHurt = 0;
+  meleeT = 0;
 
   constructor() {
-    this.slots = [this.makeCarried(PRIMARY_WEAPONS.m4), this.makeCarried(PRIMARY_WEAPONS.ks12)];
+    this.slots = [this.makeCarried(PRIMARY_WEAPONS.m4), this.makeCarried(PRIMARY_WEAPONS.p9)];
   }
 
   private makeCarried(def: WeaponDef): CarriedWeapon {
+    const attachments = campaignStartAttachments(def.id);
+    const tuned = applyAttachmentMods({ ...def }, attachments);
     return {
-      def,
-      mag: def.magSize,
-      reserve: def.reserve,
+      def: tuned,
+      attachments,
+      mag: tuned.magSize,
+      reserve: tuned.reserve,
       semi: false,
-      spread: def.spreadBase,
+      spread: tuned.spreadBase,
       reloadState: null,
       pumpT: 0,
       pumpEjected: false,
@@ -151,12 +173,12 @@ export class CampaignRules {
 
   update(dt: number, stanceRecovery = 1) {
     this.fireT = Math.max(0, this.fireT - dt);
+    if (this.meleeT > 0) this.meleeT = Math.max(0, this.meleeT - dt);
     this.burstIdle += dt;
     if (this.burstIdle > 0.32) this.burstCount = 0;
 
-    if (this.reloadT > 0) this.updateReload(dt);
-
     const w = this.activeWeapon;
+    if (this.reloadT > 0 && w) this.tickReload(dt, w);
     if (w) {
       if (w.pumpT > 0) {
         w.pumpT -= dt;
@@ -182,20 +204,25 @@ export class CampaignRules {
       }
     }
 
-    const aimWant = this.ads && !this.reloading && !this.switching;
-    const aimSpeed = 1 / (this.activeWeapon?.def.adsTime || 0.2);
-    this.adsK = THREE.MathUtils.clamp(this.adsK + (aimWant ? aimSpeed : -aimSpeed) * dt, 0, 1);
-    const k = this.adsK;
-    this.adsEase = k * k * (3 - 2 * k);
+    if (
+      this.playerHealth < 100 &&
+      this.playerHealth > 0 &&
+      performance.now() - this.lastHurt > 4500
+    ) {
+      this.playerHealth = Math.min(100, this.playerHealth + 26 * dt);
+    }
   }
 
   switchSlot(index: number) {
     const target = this.slots[index];
-    if (index === this.activeSlot || !target || this.switching) {
+    if (index === this.activeSlot || !target || this.switching || this.meleeT > 0) {
       this.updateHud();
       return;
     }
-    if (this.reloading) this.interruptReload();
+    if (this.reloading) {
+      const cur = this.activeWeapon;
+      interruptReload(cur ? reloadView(cur) : null, this);
+    }
     const current = this.activeWeapon;
     if (current) current.boltT = 0;
     this.ads = false;
@@ -209,8 +236,11 @@ export class CampaignRules {
   pickupWeapon(id: string): WeaponDef | null {
     const def = PRIMARY_WEAPONS[id];
     if (!def) return null;
-    const old = this.slots[this.activeSlot]?.def || null;
-    this.slots[this.activeSlot] = this.makeCarried(def);
+    const current = this.slots[this.activeSlot]?.def || null;
+    const swap = interactGroundWeapon(id, current?.id || null);
+    const take = PRIMARY_WEAPONS[swap.take];
+    if (!take) return null;
+    this.slots[this.activeSlot] = this.makeCarried(take);
     this.reloadT = 0;
     this.reloadDuration = 0;
     this.reloadEmpty = false;
@@ -218,274 +248,117 @@ export class CampaignRules {
     this.reloadPhase = 0;
     this.fireT = Math.max(this.fireT, 0.35);
     this.updateHud();
-    return old;
+    return swap.leave ? PRIMARY_WEAPONS[swap.leave] || current : null;
   }
 
   tryFire(triggerReleased = true): boolean {
     const w = this.activeWeapon;
     if (!w) return false;
-    if (this.fireT > 0 || this.reloading || this.switching || w.pumpT > 0 || w.boltT > 0)
-      return false;
-    if (!w.def.auto && !triggerReleased) return false;
-    this.interruptShotgunReloadForFire(w);
-    if (this.reloadBlocksFire(w)) return false;
-
-    if (w.mag <= 0) {
+    const busy = this.fireT > 0 || this.switching || this.meleeT > 0 || w.pumpT > 0 || w.boltT > 0;
+    interruptShotgunReloadForFire(reloadView(w), this);
+    if (reloadBlocksFire(reloadView(w), this, busy, this.reloadHooks())) return false;
+    const result = tryConsumeShot(fireView(w), triggerReleased, busy || this.reloading);
+    if (result.kind === 'blocked') return false;
+    if (result.kind === 'dry') {
       if (triggerReleased) {
         SFX.dryFire();
         this.triggerReleased = false;
       }
-      if (w.reserve > 0 && !this.reloading) this.startReload();
       return true;
     }
-
-    w.mag--;
-    this.discardReloadCheckpoint(w);
-    this.fireT = 60 / w.def.rpm;
+    if (result.kind === 'reload') {
+      if (triggerReleased) {
+        SFX.dryFire();
+        this.triggerReleased = false;
+      }
+      this.beginReload();
+      return true;
+    }
+    discardReloadCheckpoint(reloadView(w));
+    this.fireT = fireInterval(w.def.rpm);
     this.burstCount++;
     this.burstIdle = 0;
     this.triggerReleased = false;
-    w.spread = Math.min(w.def.spreadMax, w.spread + w.def.spreadShot);
-
-    if (w.def.id === 'ks12') {
+    if (result.pump) {
       w.pumpT = w.def.pumpTime || 0.62;
       w.pumpEjected = false;
       SFX.pumpSound(true);
-    } else if (w.def.id === 'sr7') {
+    } else if (result.bolt) {
       w.boltT = w.def.boltTime || 1.5;
       w.boltPhase = 0;
       SFX.boltCycle(0);
-    } else if (w.mag === 0) {
-      this.startReload();
+    } else if (result.emptyAutoReload) {
+      this.beginReload();
     }
-
     this.updateHud();
     return true;
   }
 
-  /** Smoke/script compatibility wrapper for a deliberate trigger press. */
   shoot(): boolean {
     return this.tryFire(true);
   }
 
   startReload() {
-    const w = this.activeWeapon;
+    this.beginReload();
+  }
+
+  startMelee(): boolean {
     if (
-      !w ||
-      w.mag >= w.def.magSize ||
-      w.reserve <= 0 ||
-      this.reloading ||
-      this.switching ||
-      w.pumpT > 0 ||
-      w.boltT > 0
+      !canStartMelee({
+        meleeT: this.meleeT,
+        switching: this.switching,
+      })
     )
-      return;
+      return false;
+    const clock = beginMeleeClock();
+    this.meleeT = clock.meleeT;
+    this.fireT = Math.max(this.fireT, clock.fireLock);
     this.ads = false;
-    if (w.reloadState) {
-      this.restoreReload(w.reloadState);
-      return;
-    }
-    const empty = w.mag <= 0;
-    const capacity = w.def.id === 'ks12' ? w.def.magSize : w.def.magSize + (empty ? 0 : 1);
-    const rounds = Math.min(capacity - w.mag, w.reserve);
-    const duration =
-      w.def.id === 'ks12'
-        ? 0.46 + rounds * 0.42 + (empty ? 0.18 : 0)
-        : empty
-          ? w.def.reloadTime
-          : w.def.tacticalReloadTime;
-    w.reloadState = {
-      progress: 0,
-      duration,
-      empty,
-      rounds,
-      phase: 0,
-      magOut: false,
-      inserted: false,
-      actionDone: false,
-      active: true,
-      soundLift: true,
-      soundOut: false,
-      soundIn: false,
-      soundAction: false,
-    };
-    this.reloadDuration = duration;
-    this.reloadT = Math.max(0.001, duration);
-    this.reloadEmpty = empty;
-    this.reloadRounds = rounds;
-    this.reloadPhase = 0;
-    this.updateHud();
-    SFX.reloadStage(w.def.id, 'lift');
-  }
-
-  private restoreReload(state: ReloadState) {
+    this.triggerReleased = false;
     const w = this.activeWeapon;
-    if (!w) return;
-    w.reloadState = state;
-    this.reloadDuration = state.duration;
-    this.reloadT = Math.max(0.001, state.duration * (1 - state.progress));
-    this.reloadEmpty = state.empty;
-    this.reloadRounds = state.rounds;
-    this.reloadPhase = state.phase;
-    state.active = true;
-    this.updateHud();
-  }
-
-  private interruptReload() {
-    if (this.reloadT <= 0) return;
-    const w = this.activeWeapon;
-    const state = w?.reloadState;
-    if (state) {
-      state.progress = Math.max(
-        state.progress,
-        THREE.MathUtils.clamp(1 - this.reloadT / this.reloadDuration, 0, 0.999)
-      );
-      state.phase = this.reloadPhase;
-      state.active = false;
-    }
-    this.reloadT = 0;
-    this.reloadDuration = 0;
-    this.reloadEmpty = false;
-    this.reloadRounds = 0;
-    this.reloadPhase = 0;
-  }
-
-  private seatMagazine(w: CarriedWeapon, state: ReloadState) {
-    if (state.inserted) return;
-    const capacity = w.def.id === 'ks12' ? w.def.magSize : w.def.magSize + (state.empty ? 0 : 1);
-    const take = Math.min(Math.max(0, capacity - w.mag), w.reserve);
-    w.mag += take;
-    w.reserve -= take;
-    state.inserted = true;
-    if (!state.soundIn) {
-      state.soundIn = true;
-      SFX.reloadStage(w.def.id, 'in');
-    }
-    this.updateHud();
-  }
-
-  private loadShotgunRounds(w: CarriedWeapon, state: ReloadState, desiredPhase: number) {
-    while (state.phase < desiredPhase && state.phase < state.rounds && w.reserve > 0) {
-      if (w.mag >= w.def.magSize) break;
-      w.mag++;
-      w.reserve--;
-      state.phase++;
-      this.reloadPhase = state.phase;
-      SFX.reloadStage('ks12', 'in');
-    }
-    this.updateHud();
-  }
-
-  private finishReload() {
-    const w = this.activeWeapon;
-    const state = w?.reloadState;
-    if (state) {
-      if (w) {
-        if (w.def.id === 'ks12') this.loadShotgunRounds(w, state, state.rounds);
-        else this.seatMagazine(w, state);
-      }
-      state.actionDone = true;
-      if (w) w.reloadState = null;
-    }
-    this.reloadT = 0;
-    this.reloadDuration = 0;
-    this.reloadEmpty = false;
-    this.reloadRounds = 0;
-    this.reloadPhase = 0;
-    if (w) w.spread = w.def.spreadBase;
-    this.updateHud();
-  }
-
-  private updateReload(dt: number) {
-    const w = this.activeWeapon;
-    const state = w?.reloadState;
-    if (!w || !state) {
-      this.reloadT = 0;
-      return;
-    }
-    this.reloadT = Math.max(0, this.reloadT - dt);
-    state.progress = THREE.MathUtils.clamp(1 - this.reloadT / state.duration, 0, 1);
-    if (w.def.id === 'ks12') {
-      const elapsed = state.progress * state.duration;
-      const desired = THREE.MathUtils.clamp(
-        Math.floor((elapsed - 0.2) / 0.42) + 1,
-        0,
-        state.rounds
-      );
-      this.loadShotgunRounds(w, state, desired);
-      if (state.empty && elapsed >= 0.2 + state.rounds * 0.42 && !state.soundAction) {
-        state.soundAction = true;
-        SFX.reloadStage('ks12', 'action');
-      }
-    } else {
-      const marks = RELOAD_STAGE[w.def.id] || { remove: 0.32, insert: 0.68, action: 0.9 };
-      if (state.progress >= marks.remove) {
-        state.magOut = true;
-        if (!state.soundOut) {
-          state.soundOut = true;
-          SFX.reloadStage(w.def.id, 'out');
-        }
-      }
-      if (state.progress >= marks.insert) this.seatMagazine(w, state);
-      if (state.progress >= marks.action && !state.actionDone) {
-        state.actionDone = true;
-        if (state.empty && !state.soundAction) {
-          state.soundAction = true;
-          SFX.reloadStage(w.def.id, 'action');
-        }
-      }
-    }
-    if (this.reloadT <= 0) this.finishReload();
-  }
-
-  private reloadBlocksFire(w: CarriedWeapon): boolean {
-    const state = w.reloadState;
-    if (!state || state.active || w.def.id === 'ks12') return false;
-    const mechanicallyOpen = !state.inserted || (state.empty && !state.actionDone);
-    if (mechanicallyOpen) this.startReload();
-    return mechanicallyOpen;
-  }
-
-  private interruptShotgunReloadForFire(w: CarriedWeapon): boolean {
-    if (w.def.id !== 'ks12' || this.reloadT <= 0 || w.mag <= 0) return false;
-    this.interruptReload();
-    w.reloadState = null;
+    interruptReload(w ? reloadView(w) : null, this);
     return true;
   }
 
-  private discardReloadCheckpoint(w: CarriedWeapon) {
-    if (w.reloadState?.active) return;
-    w.reloadState = null;
+  private beginReload() {
+    const w = this.activeWeapon;
+    if (!w) return;
+    const busy = this.switching || w.pumpT > 0 || w.boltT > 0;
+    if (startReload(reloadView(w), this, busy, this.reloadHooks())) this.ads = false;
   }
 
-  /** Shift-sprint cancels a reload exactly like the single-player input. */
+  private tickReload(dt: number, w: CarriedWeapon) {
+    const before = this.reloadT;
+    updateReload(dt, reloadView(w), this, this.reloadHooks());
+    if (before > 0 && this.reloadT <= 0) w.spread = w.def.spreadBase;
+  }
+
+  private reloadHooks() {
+    return {
+      onHud: () => this.updateHud(),
+      onSound: (family: string, stage: ReloadStageName) => SFX.reloadStage(family, stage),
+    };
+  }
+
   cancelReload() {
-    this.interruptReload();
-  }
-
-  toggleAim() {
-    this.ads = !this.ads;
+    const w = this.activeWeapon;
+    interruptReload(w ? reloadView(w) : null, this);
   }
 
   addAmmo(amount: number, throwables = true) {
     for (const slot of this.slots) {
       if (slot) slot.reserve = Math.min(slot.reserve + amount, slot.def.maxReserve);
     }
-    if (throwables) {
-      this.tacticals = Math.min(this.maxThrowables, this.tacticals + 1);
-      this.lethals = Math.min(this.maxThrowables, this.lethals + 1);
-    }
+    if (throwables) addThrowables(this.throws);
     this.updateHud();
   }
 
-  canThrow(kind: 'lethal' | 'tactical'): boolean {
-    return kind === 'lethal' ? this.lethals > 0 : this.tacticals > 0;
+  canThrow(kind: ThrowableKind): boolean {
+    return canThrow(this.throws, kind);
   }
 
-  useThrowable(kind: 'lethal' | 'tactical'): boolean {
-    if (!this.canThrow(kind)) return false;
-    if (kind === 'lethal') this.lethals--;
-    else this.tacticals--;
+  useThrowable(kind: ThrowableKind): boolean {
+    if (!consumeThrow(this.throws, kind)) return false;
     this.updateHud();
     return true;
   }
@@ -512,12 +385,12 @@ export class CampaignRules {
     const tac = document.getElementById('p0Tac') as HTMLDivElement;
     const lethal = document.getElementById('p0Lethal') as HTMLDivElement;
     if (tac) {
-      tac.textContent = `Q 闪光 ×${this.tacticals}`;
-      tac.classList.toggle('empty', this.tacticals === 0);
+      tac.textContent = `Q 闪光 ×${this.throws.tacticals}`;
+      tac.classList.toggle('empty', this.throws.tacticals === 0);
     }
     if (lethal) {
-      lethal.textContent = `G 手雷 ×${this.lethals}`;
-      lethal.classList.toggle('empty', this.lethals === 0);
+      lethal.textContent = `G 手雷 ×${this.throws.lethals}`;
+      lethal.classList.toggle('empty', this.throws.lethals === 0);
     }
   }
 }

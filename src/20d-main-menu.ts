@@ -137,3 +137,168 @@ fn fbm(p0:vec2f)->f32 { var p=p0; var a=.5; var s=0.; for(var i=0;i<5;i++){s+=a*
 document.body.classList.add('menu-open');
 showMainMenuPage('', false);
 void initMenuWebGPU();
+
+/* Branded click-to-enter gate. The user gesture here is what lets the browser
+   unlock Web Audio, so the main-menu BGM can start immediately instead of
+   waiting for the first menu navigation click. */
+const introEl = $('intro');
+const startEl = $('startScreen');
+if (introEl && !introEl.classList.contains('hide') && startEl) {
+  startEl.style.visibility = 'hidden';
+}
+function enterFromIntro() {
+  if (!introEl || introEl.classList.contains('hide')) return;
+  SFX.init();
+  SFX.resume();
+  SFX.menuMusic(true);
+  introEl.classList.add('hide');
+  if (startEl) startEl.style.visibility = '';
+}
+introEl?.addEventListener('click', enterFromIntro);
+addEventListener('keydown', (event) => {
+  if (event.code === 'Enter' || event.code === 'Space') enterFromIntro();
+});
+
+/* Homepage 2D atmosphere overlay. It sits behind the menu panel but above the
+   3D weapon plate, adding the Call-of-Duty-style dust drift and the occasional
+   bright spark that is hard to read inside the tiny 3D showcase frame. */
+function initHomeAtmosphere() {
+  const canvas = document.getElementById('homeFx') as HTMLCanvasElement | null;
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  let w = 0, h = 0;
+  const resize = () => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    w = canvas.width = Math.max(2, Math.floor(innerWidth * dpr));
+    h = canvas.height = Math.max(2, Math.floor(innerHeight * dpr));
+  };
+  resize();
+  addEventListener('resize', resize);
+
+  const dust: any[] = [];
+  for (let i = 0; i < 90; i++) {
+    dust.push({
+      x: Math.random() * innerWidth,
+      y: Math.random() * innerHeight,
+      r: 1.6 + Math.random() * 2.6,
+      vx: 5 + Math.random() * 14,
+      vy: -4 - Math.random() * 9,
+      a: 0.26 + Math.random() * 0.3,
+      tw: Math.random() * Math.PI * 2,
+    });
+  }
+
+  const smoke: any[] = [];
+  for (let i = 0; i < 8; i++) {
+    smoke.push({
+      x: Math.random() * innerWidth,
+      y: innerHeight * (0.2 + Math.random() * 0.7),
+      r: (100 + Math.random() * 160) * Math.min(window.devicePixelRatio || 1, 1.5),
+      vx: 3 + Math.random() * 7,
+      vy: -2 - Math.random() * 4,
+      a: 0.035 + Math.random() * 0.045,
+      tw: Math.random() * Math.PI * 2,
+    });
+  }
+
+  const sparks: any[] = [];
+  for (let i = 0; i < 14; i++) {
+    sparks.push({
+      x: 0, y: 0,
+      vx: 0, vy: 0,
+      life: 0, maxLife: 0,
+      delay: 0.2 + i * 0.16 + Math.random() * 0.24,
+    });
+  }
+
+  const drawGlow = (x: number, y: number, radius: number, alpha: number, rgb: string) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(1, radius));
+    g.addColorStop(0, `rgba(${rgb},${alpha})`);
+    g.addColorStop(0.4, `rgba(${rgb},${alpha * 0.35})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(1, radius), 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  let last = performance.now();
+  const tick = (now: number) => {
+    requestAnimationFrame(tick);
+    const active = document.body.classList.contains('menu-open') && !document.hidden;
+    if (!active) {
+      last = now;
+      return;
+    }
+    const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
+    last = now;
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+
+    // Drifting dust motes, normal blending so they never turn into fog.
+    for (const p of dust) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (p.x > innerWidth + 6) p.x = -6;
+      if (p.y < -6) p.y = innerHeight + 6;
+      p.tw += dt * 2.2;
+      const a = p.a * (0.75 + 0.25 * Math.sin(p.tw));
+      ctx.fillStyle = `rgba(205,218,230,${a.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Slow large smoke ghosts.
+    for (const p of smoke) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (p.x > innerWidth + p.r) p.x = -p.r;
+      if (p.y < -p.r) p.y = innerHeight + p.r;
+      p.tw += dt * 0.35;
+      drawGlow(p.x, p.y, p.r, p.a * (0.8 + 0.2 * Math.sin(p.tw)), '128,138,150');
+    }
+
+    // Occasional sparks: brief warm streaks with a tiny hot core.
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of sparks) {
+      if (p.life <= 0) {
+        p.delay -= dt;
+        if (p.delay > 0) continue;
+        p.life = p.maxLife = 0.4 + Math.random() * 0.4;
+        p.x = innerWidth * (0.48 + Math.random() * 0.46);
+        p.y = innerHeight * (0.25 + Math.random() * 0.55);
+        p.vx = (Math.random() - 0.35) * 26;
+        p.vy = -28 - Math.random() * 55;
+      } else {
+        p.life -= dt;
+        const k = Math.max(0, p.life / p.maxLife);
+        const fade = Math.min(1, (1 - k) * 5) * Math.min(1, k * 4);
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 55 * dt;
+        const sx = p.x - p.vx * 0.055;
+        const sy = p.y - p.vy * 0.055;
+        ctx.strokeStyle = `rgba(255,196,130,${(fade * 0.7).toFixed(3)})`;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        drawGlow(p.x, p.y, 3.5 + 8.0 * (1 - k), fade, '255,210,160');
+        ctx.fillStyle = `rgba(255,244,224,${fade.toFixed(3)})`;
+        ctx.fillRect(p.x - 0.8, p.y - 0.8, 1.6, 1.6);
+        if (p.life <= 0) {
+          p.delay = 0.9 + Math.random() * 2.3;
+        }
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  };
+  requestAnimationFrame(tick);
+}
+
+initHomeAtmosphere();

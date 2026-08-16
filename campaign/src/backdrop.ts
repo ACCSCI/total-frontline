@@ -47,7 +47,7 @@ export function buildHorizonBackdrop(scene: THREE.Scene) {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     side: THREE.BackSide,
-    fog: false,
+    fog: true,
     depthWrite: false,
   });
   const backdrop = new THREE.Mesh(geometry, material);

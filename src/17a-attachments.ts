@@ -1,36 +1,5 @@
 'use strict';
-const ATTACHMENT_CATALOG = {
-  optic: {
-    micro_dot: { name: '微型红点', mods: { adsTime: 0.96 } },
-    holo: { name: '方窗全息瞄具', mods: { adsTime: 0.99 } },
-    /* 75° base to 34° is a geometric 2.5x angular magnification. */
-    prism_2_5: { name: '2.5× 棱镜镜', mods: { adsTime: 1.14, adsFov: 0.895 } },
-  },
-  muzzle: {
-    compensator: {
-      name: '战术制退器',
-      mods: { recoilKick: 0.9, recoilRot: 0.9, camPitch: 0.88, camYaw: 0.82, noise: 1.08 },
-    },
-    suppressor: {
-      name: '快拆消音器',
-      mods: { noise: 0.62, range: 0.92, recoilKick: 0.96, camPitch: 0.96 },
-    },
-  },
-  underbarrel: {
-    angled_grip: { name: '斜角握把', mods: { adsTime: 0.91, moveSpread: 0.9 } },
-    vertical_grip: {
-      name: '垂直握把',
-      mods: { recoilKick: 0.86, recoilRot: 0.78, camPitch: 0.78, camYaw: 0.7, spreadShot: 0.88 },
-    },
-  },
-  magazine: {
-    standard: { name: '标准弹匣', mods: {} },
-    extended: {
-      name: '扩容弹匣',
-      mods: { magSize: 1.33, reloadTime: 1.12, tacticalReloadTime: 1.12 },
-    },
-  },
-};
+const ATTACHMENT_CATALOG = Gameplay.ATTACHMENT_CATALOG;
 
 function attachmentWeapons() {
   return WEAPONS.filter((w) => w.id === 'rifle' || w.id === 'ak');
