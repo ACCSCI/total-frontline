@@ -4,7 +4,7 @@ const REPEAT_BLOCKED_KEYS = [
   'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'KeyV', 'KeyB', 'KeyZ',
 ];
 const BLOCKED_GAME_KEYS = [
-  ...REPEAT_BLOCKED_KEYS, 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Tab', 'AltLeft', 'AltRight',
+  ...REPEAT_BLOCKED_KEYS, 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Tab',
 ];
 const sprintReloadSetting = document.getElementById('sprintReloadSetting') as HTMLInputElement;
 const menuSprintReloadSetting = document.getElementById('menuSprintReloadSetting') as HTMLInputElement;

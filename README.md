@@ -54,7 +54,7 @@ will not play on a phone.
 | Right click | Toggle aim down sights |
 | `R` | Reload |
 | `Shift` | Sprint, or hold breath while scoped |
-| `Alt` | Crouch |
+| `C` | Crouch (toggle) |
 | `Z` | Toggle prone; slowest movement and best stability |
 | `Space` | Jump; tap again in the air to double jump; hold near a ledge to mantle |
 | `1` `2` `3` `4` `5` | M4 carbine / KS-12 pump / P-9 sidearm / SR-7 Longbow / SAW-250 LMG |
