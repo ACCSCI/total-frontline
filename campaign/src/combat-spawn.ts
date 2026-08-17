@@ -72,6 +72,12 @@ export function spawnCampaignEnemy(
       tacticT: 0,
       reloadT: 0,
       rounds: 30,
+      engage: 0,
+      strafeT: 0.6 + Math.random() * 1.2,
+      suppress: 0,
+      hasCover: false,
+      coverX: x,
+      coverZ: z,
       ...extras,
     },
   };
@@ -139,6 +145,15 @@ export function spawnWaveFromReserve(
     e.reactionT = 0.2;
     e.lastSeenT = 2;
     e.patrolT = Math.random() * Math.PI * 2;
+    e.tactic = 'hold';
+    e.tacticT = 0;
+    e.reloadT = 0;
+    e.rounds = 30;
+    e.engage = 0;
+    e.strafeT = 0.6 + Math.random() * 1.2;
+    e.suppress = 0;
+    e.hasCover = false;
+    e.burst = 0;
     enemies.push(e);
   }
 }
